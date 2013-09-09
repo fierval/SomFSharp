@@ -3,22 +3,28 @@
 open System
 open System.Collections
 open System.Collections.Generic
+open System.Linq
 open MathNet.Numerics
 open MathNet.Numerics.Statistics
 open MathNet.Numerics.LinearAlgebra.Generic
 open MathNet.Numerics.LinearAlgebra.Double
+open MathNet.Numerics.Random
+open MathNet.Numerics.Distributions
 
 type Node(weights : float seq) =
     let weights = DenseVector.OfEnumerable(weights)
+    static let rndSource = new MersenneTwister()
+    static let gamma = Gamma(2.0, 1.5)
 
     do
         match weights.Count with
         | 0 -> failwith "empty node"
         | _ -> ignore()
 
-    static member private rnd = Random(int(DateTime.Now.Ticks))
+    static do
+        gamma.RandomSource <- rndSource
 
-    new (len) = Node([1..len] |> List.map (fun i -> Node.rnd.NextDouble()))
+    new (len) = Node(gamma.Samples().Take(len))
         
     member this.Item 
         with get(index) = weights.[index]
