@@ -54,7 +54,7 @@ type Som(dims : int * int, nodes : Node seq) as this =
         let minJ = ref -1
         this.somMap |> Array2D.iteri (fun i j e -> 
             let dist = getDistance e node this.Metric
-            if dist < !min || !min = -1. then min := dist; minI := i; minJ := j)
+            if dist < !min || !minI = -1 then min := dist; minI := i; minJ := j)
         !minI, !minJ
 
     member this.GetBMUParallel (node : Node) =
@@ -63,17 +63,24 @@ type Som(dims : int * int, nodes : Node seq) as this =
 
         Parallel.ForEach(
             Partitioner.Create(0, fst dims), 
-            (fun () -> ref []), 
+            (fun () -> ref (0., -1, -1)), 
             (fun range state local -> 
-                let mutable (min, minI, minJ) = -1., -1, -1
+                let mutable(min, minI, minJ) = 
+                    match !local with
+                    | m, i, j -> m, i, j
                 for i = fst range to snd range - 1 do
                     for j = 0 to snd this.Dimensions - 1 do
                         let dist = getDistance this.somMap.[i, j] node this.Metric
-                        if dist < min || min = -1. then min <- dist; minI <- i; minJ <- j
-                local := (min, minI, minJ)::!local
+                        if dist < min || minI = -1 then 
+                            min <- dist; minI <- i; minJ <- j
+                local := (min, minI, minJ)
                 local),
-            (fun local -> lock monitor (fun () -> 
-                minList := !local @ !minList))) |> ignore
+            (fun local -> lock monitor (fun () ->
+                match !local with
+                | m, i, j when i > 0 -> 
+                    minList := (m, i, j) :: !minList
+                |_ -> ()
+                ))) |> ignore
 
         let minTuple = !minList |> List.minBy (fun (x, i, j) -> x)
         match minTuple with

@@ -94,7 +94,7 @@ namespace SomTest
             var gamma = new Gamma(2.0, 1.5);
             gamma.RandomSource = new MersenneTwister();
 
-            var range = Enumerable.Range(1, 1000).ToList();
+            var range = Enumerable.Range(1, 100).ToList();
             var nodes = range.AsParallel().Select(r => new Node(gamma.Samples().Take(12))).ToList();
 
             var som = new Som(new Tuple<int, int>(200, 200), nodes);
@@ -109,12 +109,32 @@ namespace SomTest
 
         [TestMethod]
         [TestCategory("Parallel")]
+        public void BmuSeqLargeParallelTest()
+        {
+            var gamma = new Gamma(2.0, 1.5);
+            gamma.RandomSource = new MersenneTwister();
+
+            var range = Enumerable.Range(1, 100).ToList();
+            var nodes = range.AsParallel().Select(r => new Node(gamma.Samples().Take(12))).ToList();
+
+            var som = new Som(new Tuple<int, int>(200, 200), nodes);
+
+            Parallel.For(0, range.Count, (i) =>
+            {
+                Tuple<int, int> ij = som.GetBMU(nodes[0]);
+
+                Assert.IsNotNull(ij);
+            });
+        }
+
+        [TestMethod]
+        [TestCategory("Parallel")]
         public void BmuParallelLargeParallelTest()
         {
             var gamma = new Gamma(2.0, 1.5);
             gamma.RandomSource = new MersenneTwister();
 
-            var range = Enumerable.Range(1, 1000).ToList();
+            var range = Enumerable.Range(1, 100).ToList();
             var nodes = range.AsParallel().Select(r => new Node(gamma.Samples().Take(12))).ToList();
 
             var som = new Som(new Tuple<int, int>(200, 200), nodes);
