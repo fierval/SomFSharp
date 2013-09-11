@@ -11,8 +11,12 @@ open MathNet.Numerics.LinearAlgebra.Double
 open MathNet.Numerics.Random
 open MathNet.Numerics.Distributions
 
+open System.Diagnostics
+
+[<DebuggerDisplay("{Display}")>]
 type Node(weights : float seq) =
     let weights = DenseVector.OfEnumerable(weights)
+
     static let rndSource = new MersenneTwister()
     static let gamma = Gamma(2.0, 1.5)
 
@@ -25,6 +29,8 @@ type Node(weights : float seq) =
         gamma.RandomSource <- rndSource
 
     new (len) = Node(gamma.Samples().Take(len))
+    
+    member this.Display = weights.Aggregate("{", (fun a e -> a + e.ToString() + ", "), (fun a -> a.Substring(0, a.Length - 2) + "}"))
         
     member this.Item 
         with get(index) = weights.[index]

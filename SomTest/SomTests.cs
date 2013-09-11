@@ -127,6 +127,21 @@ namespace SomTest
             });
         }
 
+        [TestMethod]
+        [TestCategory("Som")]
+        public void TrainingTest()
+        {
+            List<Node> nodes = new List<Node>()
+            {
+                new Node(new double [] {0d, 0d, 255d}),
+                new Node(new double [] {0d, 255d, 0d}),
+                new Node(new double [] {255d, 0d, 0d})
+            };
 
+            var som = new Som(new Tuple<int, int>(6, 6), nodes);
+            var untrained = som.somMap;
+            som.train(100);
+            var map = som.somMap;
+        }
     }
 }

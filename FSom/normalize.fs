@@ -10,6 +10,7 @@ open System.Collections.Generic
 open System.Linq
 
 type Normalization =
+    | None
     | MinMax
     | Zscore
 
@@ -23,9 +24,10 @@ module normalize =
         let matrix =  DenseMatrix.OfColumnVectors(vectors)
 
         let rowEnum = matrix.RowEnumerator()
-        let normalizable = (rowEnum |> Seq.map (fun r -> snd r) |> Seq.map(fun r -> r.Where(fun m -> m <> 0.)))
+        let normalizable = rowEnum |> Seq.map (fun r -> snd r)
 
         match norm with
+        | None -> [for i in [1..normalizable.Count()] -> (0., 1.)]
         | MinMax -> 
             let addMul = 
                 normalizable 
@@ -33,7 +35,7 @@ module normalize =
                     let min = -sq.Min()
                     min, // returns a tuple
                     let max = sq.Max() + min
-                    if max = 0. then 1. else 1. / max) |> Seq.toList
+                    if max = 0. then 0.8 else 0.8 / max) |> Seq.toList
             addMul
         | Zscore ->
             let addMul = 

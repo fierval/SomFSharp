@@ -32,7 +32,6 @@ type Som(dims : int * int, nodes : Node seq) as this =
     let initialize () =
         let n = fst dims
         
-        epochs <- 200        
         let nodeDim =
             match nodes.First().Count() with
             | 0 -> failwith "0-length node array"
@@ -49,10 +48,6 @@ type Som(dims : int * int, nodes : Node seq) as this =
         with get () =  metric
         and set value = metric <- value
 
-    member this.Epochs
-        with get () = epochs
-        and set value = epochs <- value
-    
     member this.GetBMU (node : Node) =
         let min = ref -1.
         let minI = ref -1
@@ -103,12 +98,12 @@ type Som(dims : int * int, nodes : Node seq) as this =
             x1, x2
 
         let circXY (ctr : int * int) R =
-            let x1, x2 = circCoords (fst ctr) R (fst this.Dimensions)
-            let y1, y2 = circCoords (snd ctr) R (snd this.Dimensions)
+            let x1, x2 = circCoords (fst ctr) R (fst this.Dimensions - 1)
+            let y1, y2 = circCoords (snd ctr) R (snd this.Dimensions - 1)
             x1, x2, y1, y2
 
         let rec train R nrule iteration epochs=
-            if iteration < 0 then ()
+            if epochs = 0 then ()
             else
                 nodes |> Seq.iter 
                     (fun node ->
@@ -124,7 +119,7 @@ type Som(dims : int * int, nodes : Node seq) as this =
                                 for j = y1 to y2 do
                                     let distSq = float((xBmu - i) * (xBmu - i) + (yBmu - j) * (yBmu - j))
                                     if distSq < RSq then
-                                        let y = exp(-(1.0 * distSq) / (RSq))
+                                        let y = exp(-(10.0 * distSq) / (RSq))
                                         trainNode this.somMap.[i,j] node (nrule * y)
                     )
                 let x = float(iteration + 1)

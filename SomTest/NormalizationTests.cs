@@ -27,7 +27,7 @@ namespace SomTest
             var tpl = normalize.getNormalConstants(seqs, Normalization.MinMax);
 
             Assert.AreEqual(-.02d, tpl[0].Item1);
-            Assert.AreEqual(1d / (27d - 3.23d), tpl[1].Item2);
+            Assert.AreEqual(0.8d / (27d - 3.23d), tpl[1].Item2);
         }
 
         [TestMethod]
