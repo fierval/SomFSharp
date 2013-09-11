@@ -17,7 +17,7 @@ namespace SomTest
         [TestCategory("Normalization Constants")]
         public void MinMaxConstTest()
         {
-            List<IList<double>> seqs = new List<IList<double>>
+            List<IList<double>> seqs = new List<IList<double>>()
             {
                 new List<double>() { 5d, 7d, 1d, 1.8d},
                 new List<double>() { 1.5d, 27d, 3d, 2.1d},
@@ -27,14 +27,14 @@ namespace SomTest
             var tpl = normalize.getNormalConstants(seqs, Normalization.MinMax);
 
             Assert.AreEqual(-.02d, tpl[0].Item1);
-            Assert.AreEqual(0.9d / (27d - 3.23d), tpl[1].Item2);
+            Assert.AreEqual(1d / (27d - 3.23d), tpl[1].Item2);
         }
 
         [TestMethod]
         [TestCategory("Normalization Constants")]
         public void ZscoreTest()
         {
-            List<IList<double>> seqs = new List<IList<double>>
+            List<IList<double>> seqs = new List<IList<double>>()
             {
                 new List<double>() { 5d, 7d, 1d, 1.8d},
                 new List<double>() { 1.5d, 27d, 3d, 2.1d},
@@ -44,7 +44,7 @@ namespace SomTest
             var tpl = normalize.getNormalConstants(seqs, Normalization.Zscore);
 
             Assert.AreEqual(-(new double [] {5d, 1.5d, 0.02d}).Average(), tpl[0].Item1);
-            Assert.AreEqual(0.9 / ((new double [] {7d, 27d, 3.23d}).StandardDeviation()), tpl[1].Item2);
+            Assert.AreEqual(1d / ((new double [] {7d, 27d, 3.23d}).StandardDeviation()), tpl[1].Item2);
         }
 
         [TestMethod]
@@ -65,7 +65,7 @@ namespace SomTest
         [TestCategory("Normalization")]
         public void NormalizeTest()
         {
-            List<IList<double>> seqs = new List<IList<double>>
+            List<IList<double>> seqs = new List<IList<double>>()
             {
                 new List<double>() { 5d, 7d, 1d, 1.8d},
                 new List<double>() { 1.5d, 27d, 3d, 2.1d},
@@ -75,7 +75,7 @@ namespace SomTest
             var normalized = normalize.normalize(seqs, Normalization.Zscore).ToList();
             
             var add = -(new double[] { 7d, 27d, 3.23d }).Average();
-            var mult = 0.9 / (new double[] { 7d, 27d, 3.23d }).StandardDeviation();
+            var mult = 1d / (new double[] { 7d, 27d, 3.23d }).StandardDeviation();
             var expected = (7d + add) * mult;
 
             Assert.AreEqual(expected, normalized[0].Take(2).Last());

@@ -23,13 +23,13 @@ module normalize =
         let matrix =  DenseMatrix.OfColumnVectors(vectors)
 
         let rowEnum = matrix.RowEnumerator()
-        let normalizable = (rowEnum |> PSeq.map (fun r -> snd r) |> PSeq.map(fun r -> r.Where(fun m -> m <> 0.)))
+        let normalizable = (rowEnum |> Seq.map (fun r -> snd r) |> Seq.map(fun r -> r.Where(fun m -> m <> 0.)))
 
         match norm with
         | MinMax -> 
             let addMul = 
                 normalizable 
-                |> PSeq.map (fun sq -> 
+                |> Seq.map (fun sq -> 
                     let min = -sq.Min()
                     min, // returns a tuple
                     let max = sq.Max() + min
@@ -38,13 +38,13 @@ module normalize =
         | Zscore ->
             let addMul = 
                 normalizable 
-                |> PSeq.map(fun l -> 
+                |> Seq.map(fun l -> 
                     - l.Average(),  // returns a tuple
                     let std = l.StandardDeviation()
-                    if std = 0. then 1. else std)  |> Seq.toList
+                    if std = 0. then 1. else 1. / std)  |> Seq.toList
             addMul
 
     let normalize (nodes : IList<float IList>) norm = 
         let addMul = getNormalConstants nodes norm
-        nodes |> PSeq.map (fun n -> n |> Seq.map(fun e i -> (e + fst addMul.[i]) * snd addMul.[i]))
+        nodes |> PSeq.map (fun n -> n |> Seq.mapi(fun i e -> (e + fst addMul.[i]) * snd addMul.[i]))
         

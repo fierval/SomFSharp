@@ -28,6 +28,7 @@ type Node(weights : float seq) =
         
     member this.Item 
         with get(index) = weights.[index]
+        and set index value = weights.[index] <- value
 
     member this.Dimension = weights.Count
 
