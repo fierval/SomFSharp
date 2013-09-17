@@ -86,7 +86,8 @@ type Som(dims : int * int, nodes : Node seq) as this =
         match minTuple with
         | x, i, j -> i, j
     
-    member this.train epochs =
+    member this.train(epochs, ?isParallel) =
+        let isParallel = defaultArg isParallel true
         let R0 = float(fst this.Dimensions / 2)
         let nrule0 = 0.9
 
@@ -109,7 +110,7 @@ type Som(dims : int * int, nodes : Node seq) as this =
             let y1, y2 = circCoords (snd ctr) R (snd this.Dimensions - 1)
             x1, x2, y1, y2
 
-        let rec train R nrule iteration epochs=
+        let rec train R nrule iteration epochs isParallel =
             if epochs = 0 then ()
             else
                 nodes |> Seq.iter 
@@ -122,15 +123,24 @@ type Som(dims : int * int, nodes : Node seq) as this =
                         else
                             let x1, x2, y1, y2 = circXY (xBmu, yBmu) R
                             let RSq = R * R
-                            for i = x1 to x2 do
-                                for j = y1 to y2 do
-                                    let distSq = float((xBmu - i) * (xBmu - i) + (yBmu - j) * (yBmu - j))
-                                    if distSq < RSq then
-                                        let y = exp(-(10.0 * distSq) / (RSq))
-                                        trainNode this.somMap.[i,j] node (nrule * y)
+                            if isParallel then
+                                Parallel.For(x1, x2 + 1, 
+                                    fun i -> 
+                                        for j = y1 to y2 do
+                                            let distSq = float((xBmu - i) * (xBmu - i) + (yBmu - j) * (yBmu - j))
+                                            if distSq < RSq then
+                                                let y = exp(-(10.0 * distSq) / (RSq))
+                                                trainNode this.somMap.[i,j] node (nrule * y)) |> ignore
+                            else
+                                for i = x1 to x2 do
+                                    for j = y1 to y2 do
+                                        let distSq = float((xBmu - i) * (xBmu - i) + (yBmu - j) * (yBmu - j))
+                                        if distSq < RSq then
+                                            let y = exp(-(10.0 * distSq) / (RSq))
+                                            trainNode this.somMap.[i,j] node (nrule * y)
                     )
                 let x = float(iteration + 1)
-                train (modifyR x) (modifyTrainRule x) (iteration + 1) (epochs - 1)
+                train (modifyR x) (modifyTrainRule x) (iteration + 1) (epochs - 1) isParallel
 
-        train R0 nrule0 0 epochs
+        train R0 nrule0 0 epochs isParallel
             

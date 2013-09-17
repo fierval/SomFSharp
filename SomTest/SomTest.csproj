@@ -60,6 +60,7 @@
     <Compile Include="NodeTests.cs" />
     <Compile Include="DistanceTests.cs" />
     <Compile Include="SomTests.cs" />
+    <Compile Include="ReadFileTests.cs" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\FSom\FSom.fsproj">

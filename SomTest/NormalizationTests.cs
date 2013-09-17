@@ -72,28 +72,13 @@ namespace SomTest
                 new List<double>() { 0.02d, 3.23d, 11d, 1.8d }
             };
 
-            var normalized = normalize.normalize(seqs, Normalization.Zscore).ToList();
+            normalize.normalize(seqs, Normalization.Zscore);
             
             var add = -(new double[] { 7d, 27d, 3.23d }).Average();
             var mult = 1d / (new double[] { 7d, 27d, 3.23d }).StandardDeviation();
             var expected = (7d + add) * mult;
 
-            Assert.AreEqual(expected, normalized[0].Take(2).Last());
+            Assert.AreEqual(expected, seqs[0].Take(2).Last());
         }
-
-        [TestMethod]
-        [TestCategory("Normalization")]
-        public void NormalizeBulkTest()
-        {
-            var gamma = new Gamma(2.0, 1.5);
-            gamma.RandomSource = new MersenneTwister();
-
-            var range = Enumerable.Range(1, 100000);
-            IList<IList<double>> seqs = range.AsParallel().Select(r => gamma.Samples().Take(30).ToList() as IList<double>).ToList();
-
-            var normalized = normalize.normalize(seqs, Normalization.Zscore).AsParallel().Select(x => x.ToList()).ToList();
-
-        }
-
     }
 }

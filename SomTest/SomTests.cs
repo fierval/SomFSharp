@@ -6,6 +6,7 @@ using System.Linq;
 using MathNet.Numerics.Distributions;
 using MathNet.Numerics.Random;
 using System.Threading.Tasks;
+using Microsoft.FSharp.Core;
 
 namespace SomTest
 {
@@ -160,8 +161,37 @@ namespace SomTest
 
             var som = new Som(new Tuple<int, int>(6, 6), nodes);
             var untrained = som.somMap;
-            som.train(100);
+            som.train(100, FSharpOption<bool>.None);
             var map = som.somMap;
         }
+
+        [TestMethod]
+        [TestCategory("Parallel")]
+        public void TrainingSeqTest()
+        {
+            var gamma = new Gamma(2.0, 1.5);
+            gamma.RandomSource = new MersenneTwister();
+
+            var range = Enumerable.Range(1, 100).ToList();
+            var nodes = range.AsParallel().Select(r => new Node(gamma.Samples().Take(12))).ToList();
+
+            var som = new Som(new Tuple<int, int>(200, 200), nodes);
+            som.train(2, FSharpOption<bool>.Some(false));
+        }
+
+        [TestMethod]
+        [TestCategory("Parallel")]
+        public void TrainingParallelTest()
+        {
+            var gamma = new Gamma(2.0, 1.5);
+            gamma.RandomSource = new MersenneTwister();
+
+            var range = Enumerable.Range(1, 100).ToList();
+            var nodes = range.AsParallel().Select(r => new Node(gamma.Samples().Take(12))).ToList();
+
+            var som = new Som(new Tuple<int, int>(200, 200), nodes);
+            som.train(2, FSharpOption<bool>.Some(true));
+        }
+
     }
 }

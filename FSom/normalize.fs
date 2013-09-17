@@ -10,7 +10,7 @@ open System.Collections.Generic
 open System.Linq
 
 type Normalization =
-    | None
+    | NoNorm
     | MinMax
     | Zscore
 
@@ -27,7 +27,7 @@ module normalize =
         let normalizable = rowEnum |> Seq.map (fun r -> snd r)
 
         match norm with
-        | None -> [for i in [1..normalizable.Count()] -> (0., 1.)]
+        | NoNorm -> [for i in [1..normalizable.Count()] -> (0., 1.)]
         | MinMax -> 
             let addMul = 
                 normalizable 
@@ -48,5 +48,8 @@ module normalize =
 
     let normalize (nodes : IList<float IList>) norm = 
         let addMul = getNormalConstants nodes norm
-        nodes |> PSeq.map (fun n -> n |> Seq.mapi(fun i e -> (e + fst addMul.[i]) * snd addMul.[i]))
+        for node in nodes do
+            for i = 0 to node.Count - 1 do
+                node.[i] <- (node.[i] + fst addMul.[i]) * snd addMul.[i]
+        
         
