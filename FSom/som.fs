@@ -30,14 +30,14 @@ type Som(dims : int * int, nodes : Node seq) as this =
             | (x, y) when x = y && x > 0 -> (x, y)
             | _ -> failwith "wrong dimensions for the input som."
     let initialize () =
-        let n = fst dims
+        let x,y = dims
         
         let nodeDim =
             match nodes.First().Count() with
             | 0 -> failwith "0-length node array"
             | n -> n
 
-        let range = Array2D.zeroCreateBased 0 0 n n
+        let range = Array2D.zeroCreateBased 0 0 x y
         range |> Array2D.map (fun r -> Node(nodeDim))
 
     do
@@ -47,6 +47,9 @@ type Som(dims : int * int, nodes : Node seq) as this =
     member this.Metric 
         with get () =  metric
         and set value = metric <- value
+
+    member this.Item
+        with get(i1, i2) = this.somMap.[i1, i2]
 
     member this.GetBMU (node : Node) =
         let min = ref -1.
