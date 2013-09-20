@@ -2,6 +2,7 @@
 
 open System
 open System.Linq
+open System.Collections.Generic
 open Alea.CUDA
 open System.Diagnostics
 
@@ -30,25 +31,36 @@ module SomGpuModule =
                         distances.[i] <- (map.[i] - node.[j]) * (map.[i] - node.[j])
                         if threadIdx.x = 0 then
                             __syncthreads()
-
-                            for thread  in [0..nodeLen..blockDim.x  - 1] do
-                                if mapI + thread < len then 
-                                    let mutable sum = 0.
-                                    for j = 0 to nodeLen - 1 do
-                                        sum <- sum + distances.[mapI + thread + j]
-                                    mins.[(mapI + thread) / nodeLen] <- sqrt(sum)                @> 
+                            let mutable thread = 0
+                            let mutable frst = true
+                            while mapI + thread < len && thread < blockDim.x do
+                                let mutable sum = 0.
+                                for j = 0 to nodeLen - 1 do
+                                    sum <- sum + distances.[mapI + thread + j]
+                                if frst || mins.[blockIdx.x] > sum then
+                                    mins.[blockIdx.x] <- sum
+                                thread <- thread + 3
+                    @> 
                 |> defineKernelFunc
+
+            let diagnose (stats:KernelExecutionStats) =
+               printfn "gpu timing: %10.3f ms %6.2f%% threads(%d) reg(%d) smem(%d)"
+                   stats.TimeSpan
+                   (stats.Occupancy * 100.0)
+                   stats.LaunchParam.BlockDim.Size
+                   stats.Kernel.NumRegs
+                   stats.Kernel.StaticSharedMemBytes
 
             return PFunc(fun (m:Module) (node : float []) (map : float []) ->
                 let kernel = kernel.Apply m
                 let nodeLen = node.Length
+                let nt = (256 / nodeLen) * nodeLen // number of threads divisible by nodeLen
+                let nBlocks = (map.Length + nt - 1)/ nt //map.Length is a multiple of nodeLen by construction
                 use dNode = m.Worker.Malloc(node)
                 use dMap = m.Worker.Malloc(map)
                 use dDist = m.Worker.Malloc<float>(map.Length)
-                use dMins = m.Worker.Malloc<float>(map.Length / nodeLen)
-                let nt = (1024 / nodeLen) * nodeLen // number of threads divisible by nodeLen
-                let nBlocks = (map.Length + nt - 1)/ nt //map.Length is a multiple of nodeLen by construction
-                let lp = LaunchParam(nBlocks, nt)
+                use dMins = m.Worker.Malloc<float>(nBlocks)
+                let lp = LaunchParam(nBlocks, nt) //|> Engine.setDiagnoser diagnose
                 kernel.Launch lp nodeLen (map.Length) dNode.Ptr dMap.Ptr dDist.Ptr dMins.Ptr
                 dMins.ToHost()
                 )
@@ -96,3 +108,12 @@ module SomGpuModule =
             let x = i / fst dims 
             let y = i - x * fst dims
             x, y
+
+        member this.GetBmuGpu (node : Node) = 
+            let worker = Engine.workers.DefaultWorker
+            use pfuncm = worker.LoadPModule(pDistances)
+            let mins = pfuncm.Invoke (node.ToArray()) somArray
+            mins
+
+        member this.MergeNodes () =
+            nodes.SelectMany(fun (n : Node) -> n :> IEnumerable<float>)

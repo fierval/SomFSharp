@@ -66,5 +66,20 @@ namespace SomTest
             Assert.AreEqual(1, somGpu.toSomCoordinates(13).Item2);
         }
 
+        [TestMethod]
+        [TestCategory("SomGpu")]
+        public void MergeNodesGpuTest()
+        {
+            List<Node> nodes = new List<Node>()
+            {
+                new Node(new double [] {0d, 0d, 255d}),
+                new Node(new double [] {0d, 255d, 0d}),
+                new Node(new double [] {255d, 0d, 0d})
+            };
+
+            var somGpu = new SomGpuModule.SomGpu(new Tuple<int, int>(6, 6), nodes);
+            var flat = somGpu.MergeNodes();
+        }
+
     }
 }
