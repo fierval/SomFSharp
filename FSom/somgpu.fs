@@ -30,13 +30,13 @@ module SomGpuModule =
                         distances.[i] <- (map.[i] - node.[j]) * (map.[i] - node.[j])
                         if threadIdx.x = 0 then
                             __syncthreads()
-                            for k = 0 to blockDim.x - 1 do
-                                let index = k + mapI
-                                if index < len then
+
+                            for thread  in [0..nodeLen..blockDim.x  - 1] do
+                                if mapI + thread < len then 
+                                    let mutable sum = 0.
                                     for j = 0 to nodeLen - 1 do
-                                        mins.[k] <- mins.[k] + distances.[k + j]
-                                mins.[k] <- sqrt(mins.[k])
-                @> 
+                                        sum <- sum + distances.[mapI + thread + j]
+                                    mins.[(mapI + thread) / nodeLen] <- sqrt(sum)                @> 
                 |> defineKernelFunc
 
             return PFunc(fun (m:Module) (node : float []) (map : float []) ->
@@ -47,9 +47,7 @@ module SomGpuModule =
                 use dDist = m.Worker.Malloc<float>(map.Length)
                 use dMins = m.Worker.Malloc<float>(map.Length / nodeLen)
                 let nt = (1024 / nodeLen) * nodeLen // number of threads divisible by nodeLen
-                let nExactBlocks = (map.Length + nt - 1)/ nt //map.Length is a multiple of nodeLen by construction
-                let nRemainder = map.Length % nt
-                let nBlocks = if nRemainder > 0 then nExactBlocks + 1 else nExactBlocks
+                let nBlocks = (map.Length + nt - 1)/ nt //map.Length is a multiple of nodeLen by construction
                 let lp = LaunchParam(nBlocks, nt)
                 kernel.Launch lp nodeLen (map.Length) dNode.Ptr dMap.Ptr dDist.Ptr dMins.Ptr
                 dMins.ToHost()
@@ -72,9 +70,7 @@ module SomGpuModule =
             let arrNode = node.ToArray()
             let nodeLen = arrNode.Length
             let nt = (blockSize / nodeLen) * nodeLen // number of threads divisible by nodeLen
-            let nExactBlocks = (somArray.Length + nt - 1)/ nt //map.Length is a multiple of nodeLen by construction
-            let nRemainder = somArray.Length % nt
-            let nBlocks = if nRemainder > 0 then nExactBlocks + 1 else nExactBlocks
+            let nBlocks = (somArray.Length + nt - 1)/ nt //map.Length is a multiple of nodeLen by construction
             let distances = Array.zeroCreate somArray.Length
             let mins = Array.zeroCreate (somArray.Length / nodeLen)
             for block = 0 to nBlocks - 1 do
@@ -87,13 +83,16 @@ module SomGpuModule =
                         let j = thread % arrNode.Length
 
                         distances.[i] <- (somArray.[i] - node.[j]) * (somArray.[i] - node.[j])
-                for thread = 0 to nt - 1 do
-                    for j = 0 to nodeLen - 1 do
-                        mins.[mapI + thread ] <- mins.[mapI + thread] + distances.[mapI + thread + j]
-                    mins.[mapI + thread] <- sqrt(mins.[mapI + thread])
+
+                for thread  in [0..nodeLen..nt  - 1] do
+                    if mapI + thread < somArray.Length then 
+                        let mutable sum = 0.
+                        for j = 0 to nodeLen - 1 do
+                            sum <- sum + distances.[mapI + thread + j]
+                        mins.[(mapI + thread) / nodeLen] <- sqrt(sum)
             mins
                      
         member this.toSomCoordinates i =
-            let x = i / fst dims
-            let y = (i - x * fst dims)
+            let x = i / fst dims 
+            let y = i - x * fst dims
             x, y
