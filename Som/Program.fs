@@ -15,16 +15,20 @@ let toc () =
 
 [<EntryPoint>]
 let main argv = 
-    let nodes = ([1..2] |> Seq.map (fun i -> Node(12))).ToList()
+    let nodes = ([1..12] |> Seq.map (fun i -> Node(12))).ToList()
     let som = SomGpu((200, 200), nodes)
 
-    for i = 1 to 3 do
+    for i = 1 to 5 do
         tic()
-
-        nodes |> Seq.iter( fun node -> som.GetBmuGpu(node) |> ignore)
+        som.GetBmuGpu nodes |> ignore
         printfn "gpu timing: %10.3f ms" (toc())
 
         tic()
         nodes |> Seq.iter( fun node -> som.GetBMUParallel(node) |> ignore)
         printfn "cpu timing: %10.3f ms" (toc())
+
+        tic()
+        som.GetBMUParallel(nodes.[i]) |> ignore
+        printfn "cpu timing for a single node: %10.3f ms" (toc())
+
     0

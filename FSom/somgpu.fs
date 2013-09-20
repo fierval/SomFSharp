@@ -10,7 +10,7 @@ open System.Diagnostics
 module SomGpuModule =
     let pDistances = 
         cuda {
-            let! kernel =
+            let kernel =
                 <@ fun nodeLen len
                     (node : DevicePtr<float>) 
                     (map :  DevicePtr<float>)
@@ -39,9 +39,22 @@ module SomGpuModule =
                                     sum <- sum + distances.[mapI + thread + j]
                                 if frst || mins.[blockIdx.x] > sum then
                                     mins.[blockIdx.x] <- sum
-                                thread <- thread + 3
+                                thread <- thread + nodeLen
                     @> 
-                |> defineKernelFunc
+
+            let! kernel1 = kernel |> defineKernelFuncWithName "first"
+            let! kernel2 = kernel |> defineKernelFuncWithName "second"
+            let! kernel3 = kernel |> defineKernelFuncWithName "third"
+            let! kernel4 = kernel |> defineKernelFuncWithName "fourth"
+            let! kernel5 = kernel |> defineKernelFuncWithName "fifth"
+            let! kernel6 = kernel |> defineKernelFuncWithName "sixths"
+            let! kernel7 = kernel |> defineKernelFuncWithName "seventh"
+            let! kernel8 = kernel |> defineKernelFuncWithName "eights"
+            let! kernel9 = kernel |> defineKernelFuncWithName "nineth"
+            let! kernel10 = kernel |> defineKernelFuncWithName "tenth"
+            let! kernel11 = kernel |> defineKernelFuncWithName "eleventh"
+            let! kernel12 = kernel |> defineKernelFuncWithName "twelveth"
+
 
             let diagnose (stats:KernelExecutionStats) =
                printfn "gpu timing: %10.3f ms %6.2f%% threads(%d) reg(%d) smem(%d)"
@@ -51,17 +64,20 @@ module SomGpuModule =
                    stats.Kernel.NumRegs
                    stats.Kernel.StaticSharedMemBytes
 
-            return PFunc(fun (m:Module) (node : float []) (map : float []) ->
-                let kernel = kernel.Apply m
-                let nodeLen = node.Length
+            return PFunc(fun (m:Module) (streams:Stream []) (nodes : float [] list) (map : float []) ->
+                //let kernel = kernel.Apply m
+                let nodeLen = nodes.[0].Length
+                let kernels = [kernel1; kernel2; kernel3; kernel4; kernel5; kernel6; kernel7; kernel8; kernel9; kernel10; kernel11; kernel12]
+                let chunk = map.Length
                 let nt = (256 / nodeLen) * nodeLen // number of threads divisible by nodeLen
-                let nBlocks = (map.Length + nt - 1)/ nt //map.Length is a multiple of nodeLen by construction
-                use dNode = m.Worker.Malloc(node)
+                let nBlocks = (chunk + nt - 1)/ nt //map.Length is a multiple of nodeLen by construction
                 use dMap = m.Worker.Malloc(map)
                 use dDist = m.Worker.Malloc<float>(map.Length)
-                use dMins = m.Worker.Malloc<float>(nBlocks)
-                let lp = LaunchParam(nBlocks, nt) //|> Engine.setDiagnoser diagnose
-                kernel.Launch lp nodeLen (map.Length) dNode.Ptr dMap.Ptr dDist.Ptr dMins.Ptr
+                use dMins = m.Worker.Malloc<float>(nBlocks * kernels.Length)
+                let lps = streams |> Array.map (fun stream -> LaunchParam(nBlocks, nt, 0, stream) |> Engine.setDiagnoser diagnose) 
+                nodes |> List.iteri (fun i node ->
+                    use dNode = m.Worker.Malloc(node)
+                    kernels.[i].Launch m lps.[i] nodeLen chunk dNode.Ptr dMap.Ptr dDist.Ptr (dMins.Ptr + i * nBlocks))
                 dMins.ToHost()
                 )
         }
@@ -109,10 +125,12 @@ module SomGpuModule =
             let y = i - x * fst dims
             x, y
 
-        member this.GetBmuGpu (node : Node) = 
+        member this.GetBmuGpu (nodes : Node seq) =
             let worker = Engine.workers.DefaultWorker
             use pfuncm = worker.LoadPModule(pDistances)
-            let mins = pfuncm.Invoke (node.ToArray()) somArray
+            let streams = Array.init 12 (fun _ -> worker.CreateStream())
+
+            let mins = pfuncm.Invoke streams (nodes |> Seq.map (fun n -> n.ToArray()) |> Seq.toList)  somArray
             mins
 
         member this.MergeNodes () =
