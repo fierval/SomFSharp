@@ -5,17 +5,49 @@ open System.Linq
 open System.Collections.Generic
 open Alea.CUDA
 open System.Diagnostics
+open System.Threading
+open System.Threading.Tasks
 
 [<AutoOpen>]
 module SomGpuModule =
+    let pMinimum = 
+        cuda {
+            let! kernel = 
+                <@ 
+                    fun nBlocks 
+                        (minDist : DevicePtr<float>)
+                        (minIndex : DevicePtr<int>) 
+                        (mins : DevicePtr<int>) ->
+
+                        let nodeBaseI = blockIdx.x * blockDim.x
+                        let mutable min = minDist.[nodeBaseI]
+                        mins.[blockIdx.x] <- minIndex.[nodeBaseI]
+                        for j = 1 to nBlocks - 1 do
+                            if minDist.[nodeBaseI + j] < min then
+                                min <-minDist.[nodeBaseI + j]
+                                mins.[blockIdx.x] <- minIndex.[nodeBaseI + j]
+
+                @> |> defineKernelFunc
+
+            return PFunc(fun (m:Module) nBlocks (nNodes : int) minDist minIndex -> 
+                let kernel = kernel.Apply m
+                let dMins = m.Worker.Malloc<int>(nNodes)
+                let lp = LaunchParam(nNodes, nBlocks)
+                kernel.Launch lp nBlocks minDist minIndex dMins.Ptr
+                dMins.ToHost()
+            )
+        }
+
     let pDistances = 
         cuda {
-            let kernel =
+            let! kernel =
                 <@ fun nodeLen len
                     (node : DevicePtr<float>) 
                     (map :  DevicePtr<float>)
                     (distances : DevicePtr<float>)
-                    (mins : DevicePtr<float>) ->
+                    (minDist : DevicePtr<float>)
+                    (minIndex : DevicePtr<int>) 
+                    ->
 
                     // index into the original map, assuming
                     // a node is a single entity
@@ -32,29 +64,21 @@ module SomGpuModule =
                         if threadIdx.x = 0 then
                             __syncthreads()
                             let mutable thread = 0
-                            let mutable frst = true
+                            minIndex.[blockIdx.x] <- -1
+                            
+                            // find the minimum among threads
                             while mapI + thread < len && thread < blockDim.x do
+                                let k = mapI + thread
                                 let mutable sum = 0.
                                 for j = 0 to nodeLen - 1 do
-                                    sum <- sum + distances.[mapI + thread + j]
-                                if frst || mins.[blockIdx.x] > sum then
-                                    mins.[blockIdx.x] <- sum
+                                    sum <- sum + distances.[k + j]
+                                if minDist.[blockIdx.x] > sum || minIndex.[blockIdx.x] < 0 then
+                                    minDist.[blockIdx.x] <- sum
+                                    minIndex.[blockIdx.x] <- k / nodeLen
                                 thread <- thread + nodeLen
-                    @> 
-
-            let! kernel1 = kernel |> defineKernelFuncWithName "first"
-            let! kernel2 = kernel |> defineKernelFuncWithName "second"
-            let! kernel3 = kernel |> defineKernelFuncWithName "third"
-            let! kernel4 = kernel |> defineKernelFuncWithName "fourth"
-            let! kernel5 = kernel |> defineKernelFuncWithName "fifth"
-            let! kernel6 = kernel |> defineKernelFuncWithName "sixths"
-            let! kernel7 = kernel |> defineKernelFuncWithName "seventh"
-            let! kernel8 = kernel |> defineKernelFuncWithName "eights"
-            let! kernel9 = kernel |> defineKernelFuncWithName "nineth"
-            let! kernel10 = kernel |> defineKernelFuncWithName "tenth"
-            let! kernel11 = kernel |> defineKernelFuncWithName "eleventh"
-            let! kernel12 = kernel |> defineKernelFuncWithName "twelveth"
-
+                                    
+                    @> |> defineKernelFunc
+            let! pMinimumKernel = pMinimum
 
             let diagnose (stats:KernelExecutionStats) =
                printfn "gpu timing: %10.3f ms %6.2f%% threads(%d) reg(%d) smem(%d)"
@@ -64,21 +88,40 @@ module SomGpuModule =
                    stats.Kernel.NumRegs
                    stats.Kernel.StaticSharedMemBytes
 
-            return PFunc(fun (m:Module) (streams:Stream []) (nodes : float [] list) (map : float []) ->
-                //let kernel = kernel.Apply m
+            return PFunc(fun (m:Module) (nodes : float [] list) (map : float []) ->
+                let kernel = kernel.Apply m
                 let nodeLen = nodes.[0].Length
-                let kernels = [kernel1; kernel2; kernel3; kernel4; kernel5; kernel6; kernel7; kernel8; kernel9; kernel10; kernel11; kernel12]
                 let chunk = map.Length
-                let nt = (256 / nodeLen) * nodeLen // number of threads divisible by nodeLen
+                let nt = (512 / nodeLen) * nodeLen // number of threads divisible by nodeLen
                 let nBlocks = (chunk + nt - 1)/ nt //map.Length is a multiple of nodeLen by construction
                 use dMap = m.Worker.Malloc(map)
                 use dDist = m.Worker.Malloc<float>(map.Length)
-                use dMins = m.Worker.Malloc<float>(nBlocks * kernels.Length)
-                let lps = streams |> Array.map (fun stream -> LaunchParam(nBlocks, nt, 0, stream) |> Engine.setDiagnoser diagnose) 
+                use dMinIndices = m.Worker.Malloc<int>(nBlocks * nodes.Length)
+                use dMinDists = m.Worker.Malloc<float>(nBlocks * nodes.Length)
+                use dNodes = m.Worker.Malloc(nodes.SelectMany(fun n -> n :> float seq).ToArray())
+                
+                let lp = LaunchParam(nBlocks, nt) //|> Engine.setDiagnoser diagnose
                 nodes |> List.iteri (fun i node ->
-                    use dNode = m.Worker.Malloc(node)
-                    kernels.[i].Launch m lps.[i] nodeLen chunk dNode.Ptr dMap.Ptr dDist.Ptr (dMins.Ptr + i * nBlocks))
-                dMins.ToHost()
+                    kernel.Launch lp nodeLen chunk (dNodes.Ptr + i * nodeLen) dMap.Ptr dDist.Ptr (dMinDists.Ptr + i * nBlocks) (dMinIndices.Ptr + i * nBlocks))
+              
+                let pMin = pMinimumKernel.Apply m
+                if nBlocks <= 1024 then
+                    pMin nBlocks nodes.Length dMinDists.Ptr dMinIndices.Ptr
+                else
+                    let minDists = dMinDists.ToHost()                                        
+                    let indices = dMinIndices.ToHost()
+                    let mins = (Array.zeroCreate nodes.Length).ToList()
+
+                    Parallel.For(0, nodes.Length, fun i ->
+                        let baseI = i * nBlocks
+                        let mutable min = minDists.[baseI]
+                        mins.[i] <- indices.[baseI]
+                        for j = 1 to nBlocks - 1 do
+                            if minDists.[baseI + j] < min then
+                                min <-minDists.[baseI + j]
+                                mins.[i] <- indices.[baseI + j]
+                    ) |> ignore
+                    mins.ToArray()
                 )
         }
 
@@ -128,9 +171,8 @@ module SomGpuModule =
         member this.GetBmuGpu (nodes : Node seq) =
             let worker = Engine.workers.DefaultWorker
             use pfuncm = worker.LoadPModule(pDistances)
-            let streams = Array.init 12 (fun _ -> worker.CreateStream())
 
-            let mins = pfuncm.Invoke streams (nodes |> Seq.map (fun n -> n.ToArray()) |> Seq.toList)  somArray
+            let mins = pfuncm.Invoke (nodes |> Seq.map (fun n -> n.ToArray()) |> Seq.toList)  somArray
             mins
 
         member this.MergeNodes () =
