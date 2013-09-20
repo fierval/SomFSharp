@@ -92,7 +92,7 @@ module SomGpuModule =
                 let kernel = kernel.Apply m
                 let nodeLen = nodes.[0].Length
                 let chunk = map.Length
-                let nt = (512 / nodeLen) * nodeLen // number of threads divisible by nodeLen
+                let nt = (256 / nodeLen) * nodeLen // number of threads divisible by nodeLen
                 let nBlocks = (chunk + nt - 1)/ nt //map.Length is a multiple of nodeLen by construction
                 use dMap = m.Worker.Malloc(map)
                 use dDist = m.Worker.Malloc<float>(map.Length)
@@ -110,9 +110,9 @@ module SomGpuModule =
                 else
                     let minDists = dMinDists.ToHost()                                        
                     let indices = dMinIndices.ToHost()
-                    let mins = (Array.zeroCreate nodes.Length).ToList()
+                    let mins = (Array.zeroCreate nodes.Length)
 
-                    Parallel.For(0, nodes.Length, fun i ->
+                    for i = 0 to nodes.Length - 1 do
                         let baseI = i * nBlocks
                         let mutable min = minDists.[baseI]
                         mins.[i] <- indices.[baseI]
@@ -120,8 +120,8 @@ module SomGpuModule =
                             if minDists.[baseI + j] < min then
                                 min <-minDists.[baseI + j]
                                 mins.[i] <- indices.[baseI + j]
-                    ) |> ignore
-                    mins.ToArray()
+                    |> ignore
+                    mins
                 )
         }
 
