@@ -62,8 +62,9 @@
     <Compile Include="node.fs" />
     <Compile Include="distance.fs" />
     <Compile Include="som.fs" />
-    <Compile Include="somgpu.fs" />
+    <Compile Include="somgpumassive.fs" />
     <None Include="packages.config" />
+    <Compile Include="somgpu.fs" />
   </ItemGroup>
   <ItemGroup>
     <Reference Include="Alea.CUDA, Version=1.1.0.0, Culture=neutral, PublicKeyToken=ba52afc3c2e933d6" />

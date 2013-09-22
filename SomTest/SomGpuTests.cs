@@ -27,31 +27,6 @@ namespace SomTest
 
         [TestMethod]
         [TestCategory("SomGpu")]
-        public void GetSingleBmuTest()
-        {
-            List<Node> nodes = new List<Node>()
-            {
-                new Node(new double [] {0d, 0d, 255d}),
-                new Node(new double [] {0d, 255d, 0d}),
-                new Node(new double [] {255d, 0d, 0d})
-            };
-
-            var somGpu = new SomGpuModule.SomGpu(new Tuple<int, int>(6, 6), nodes);
-            var bmu = somGpu.GetBMU(nodes[0]);
-            var x = bmu.Item1;
-            var y = bmu.Item2;
-
-            var mins = somGpu.SingleDimBmu(100, nodes[0]).ToList();
-            var min = mins.Min();
-            var j = mins.IndexOf(min);
-
-            var xy = somGpu.toSomCoordinates(j);
-            Assert.AreEqual(x, xy.Item1);
-            Assert.AreEqual(y, xy.Item2);
-        }
-
-        [TestMethod]
-        [TestCategory("SomGpu")]
         public void ToSomCoordinatesTest()
         {
             List<Node> nodes = new List<Node>()

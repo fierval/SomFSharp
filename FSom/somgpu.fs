@@ -9,7 +9,9 @@ open System.Threading
 open System.Threading.Tasks
 
 [<AutoOpen>]
-module SomGpuModule =
+module SomGpuModule1 =
+    let maxThreadsPerBlock = 256
+
     let pMinimum = 
         cuda {
             let! kernel = 
@@ -125,7 +127,7 @@ module SomGpuModule =
                 )
         }
 
-    type SomGpu(dims : int * int, nodes : Node seq) as this =
+    type SomGpu1(dims, nodes) as this =
         inherit Som(dims, nodes)
         
         let somArray =
@@ -167,8 +169,10 @@ module SomGpuModule =
             let x = i / fst dims 
             let y = i - x * fst dims
             x, y
+        
+        abstract member GetBmuGpu : Node seq -> int []
 
-        member this.GetBmuGpu (nodes : Node seq) =
+        default this.GetBmuGpu (nodes : Node seq) =
             let worker = Engine.workers.DefaultWorker
             use pfuncm = worker.LoadPModule(pDistances)
 
