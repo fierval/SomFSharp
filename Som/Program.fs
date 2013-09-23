@@ -17,7 +17,7 @@ let toc () =
 let main argv = 
     
     
-    for j = 0 to 4 do
+    for j = 0 to 2 do
         let upper = 10. ** float(j)
         let bound = int(floor(upper * 1.2))
         let nodes = ([1..bound] |> Seq.map (fun i -> Node(12))).ToList()
@@ -30,7 +30,7 @@ let main argv =
             printfn "============================"
             printfn "\tAttempt: %d" i
             tic()
-            let minsGpu = som.GetBmuGpu nodes
+            let minsGpu = som.GetBmuGpuSingle nodes
             printfn "\tgpu iterations: %10.3f ms" (toc())
 
             tic()
@@ -47,14 +47,16 @@ let main argv =
                 nodes |> Seq.iter( fun node -> som.GetBMU(node) |> ignore)
                 printfn "\tcpu sequential: %10.3f ms" (toc())
 
-    //            tic()
-    //            let min = som.GetBMUParallel(nodes.[5])
-    //            printfn "cpu timing for a single node: %10.3f ms" (toc())
-    //
-    //            if som.toSomCoordinates (minsGpu.[5]) = min then
-    //                printfn "success!"
-    //            else
-    //                printfn "needs work"
+                let rnd = Random(int(DateTime.Now.Ticks))
+                let ind = rnd.Next(0, bound)
+                tic()
+                let min = som.GetBMU(nodes.[ind])
+                printfn "cpu timing for a single node: %10.3f ms" (toc())
+    
+                if som.toSomCoordinates (minsGpu.[ind]) = min then
+                    printfn "success!"
+                else
+                    printfn "needs work"
 
 
     0
