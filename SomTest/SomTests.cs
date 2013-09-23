@@ -196,11 +196,12 @@ namespace SomTest
         [TestCategory("Som")]
         public void BmuGpuSepParallelCompareTest()
         {
-            List<Node> nodes = Enumerable.Range(1, 10).Select(r => new Node(5)).ToList();
-            var som = new SomGpuMassiveFullRotationModule.SomGpu(new Tuple<int, int>(10, 10), nodes);
+            var bound = 12;
+            List<Node> nodes = Enumerable.Range(1, bound).Select(r => new Node(12)).ToList();
+            var som = new SomGpuMassiveFullRotationModule.SomGpu2(new Tuple<int, int>(200, 200), nodes);
 
             var rnd = new Random((int)DateTime.Now.Ticks);
-            int ind = rnd.Next(0, 10);
+            int ind = rnd.Next(0, bound);
 
             Tuple<int, int> ij = som.GetBMU(nodes[ind]);
             var i = ij.Item1;

@@ -12,7 +12,7 @@ open System.Threading.Tasks
 module SomGpuMassiveFullRotationModule =
     let maxThreadsPerBlock = 256
 
-    let pDistancesMassive = 
+    let pDistancesMassive2 = 
         cuda {
             let! kernel =
                 <@ fun len nodeLen totalNodes iter
@@ -83,19 +83,36 @@ module SomGpuMassiveFullRotationModule =
 
                 use dMap = m.Worker.Malloc(map)
                 let dist = Array.create mapLen Double.MaxValue
-                use dMinDist = m.Worker.Malloc(mapLen)
-                use dIndex = m.Worker.Malloc<int>(len) 
+                use dMinDist = m.Worker.Malloc(dist)
+                use dIndex = m.Worker.Malloc<int>(mapLen) 
                 use dTemp = m.Worker.Malloc<float>(len)
                 use dNodes = m.Worker.Malloc(nodes.SelectMany(fun n -> n :> float seq).ToArray())
                 let lp = LaunchParam(nBlocks, nt) //|> Engine.setDiagnoser diagnose
                     
                 for iter = 0 to len / nodeLen / fit - 1 do
                     kernel.Launch lp len nodeLen totalNodes iter dNodes.Ptr dMap.Ptr dTemp.Ptr dMinDist.Ptr dIndex.Ptr
-                dIndex.ToHost()
+
+                let finalMinIndex = Array.zeroCreate totalNodes
+                
+                let minDist = dMinDist.ToHost()
+                let minIndex = dIndex.ToHost()
+
+                for i in [0..totalNodes - 1] do
+                    let stride = totalNodes
+                    let mutable min = minDist.[i]
+                    finalMinIndex.[i] <- minIndex.[i]
+                    let mutable j = i + stride
+
+                    while j < mapLen do
+                        if min > minDist.[j] then
+                            min <- minDist.[j]
+                            finalMinIndex.[i] <- minIndex.[j]
+                        j <- j + stride
+                finalMinIndex        
             )
         }
 
-    type SomGpu(dims, nodes) as this =
+    type SomGpu2(dims, nodes) as this =
         inherit Som(dims, nodes)
         
         let somArray =
@@ -174,7 +191,7 @@ module SomGpuMassiveFullRotationModule =
 
         member this.GetBmuGpu (nodes : Node seq) =
             let worker = Engine.workers.DefaultWorker
-            use pfuncm = worker.LoadPModule(pDistancesMassive)
+            use pfuncm = worker.LoadPModule(pDistancesMassive2)
 
             let mins = pfuncm.Invoke (nodes |> Seq.map (fun n -> n.ToArray()) |> Seq.toList)  somArray
             mins

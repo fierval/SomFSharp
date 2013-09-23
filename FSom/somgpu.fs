@@ -12,34 +12,6 @@ open System.Threading.Tasks
 module SomGpuModule1 =
     let maxThreadsPerBlock = 256
 
-    let pMinimum = 
-        cuda {
-            let! kernel = 
-                <@ 
-                    fun nBlocks 
-                        (minDist : DevicePtr<float>)
-                        (minIndex : DevicePtr<int>) 
-                        (mins : DevicePtr<int>) ->
-
-                        let nodeBaseI = blockIdx.x * blockDim.x
-                        let mutable min = minDist.[nodeBaseI]
-                        mins.[blockIdx.x] <- minIndex.[nodeBaseI]
-                        for j = 1 to nBlocks - 1 do
-                            if minDist.[nodeBaseI + j] < min then
-                                min <-minDist.[nodeBaseI + j]
-                                mins.[blockIdx.x] <- minIndex.[nodeBaseI + j]
-
-                @> |> defineKernelFunc
-
-            return PFunc(fun (m:Module) nBlocks (nNodes : int) minDist minIndex -> 
-                let kernel = kernel.Apply m
-                let dMins = m.Worker.Malloc<int>(nNodes)
-                let lp = LaunchParam(nNodes, nBlocks)
-                kernel.Launch lp nBlocks minDist minIndex dMins.Ptr
-                dMins.ToHost()
-            )
-        }
-
     let pDistances = 
         cuda {
             let! kernel =
@@ -63,24 +35,20 @@ module SomGpuModule1 =
                         let j = threadIdx.x % nodeLen
 
                         distances.[i] <- (map.[i] - node.[j]) * (map.[i] - node.[j])
-                        if threadIdx.x = 0 then
-                            __syncthreads()
-                            let mutable thread = 0
+                        __syncthreads()
+                        if threadIdx.x % nodeLen = 0 then
                             minIndex.[blockIdx.x] <- -1
                             
                             // find the minimum among threads
-                            while mapI + thread < len && thread < blockDim.x do
-                                let k = mapI + thread
-                                let mutable sum = 0.
-                                for j = 0 to nodeLen - 1 do
-                                    sum <- sum + distances.[k + j]
-                                if minDist.[blockIdx.x] > sum || minIndex.[blockIdx.x] < 0 then
-                                    minDist.[blockIdx.x] <- sum
-                                    minIndex.[blockIdx.x] <- k / nodeLen
-                                thread <- thread + nodeLen
+                            let k = mapI + threadIdx.x
+                            let mutable sum = 0.
+                            for j = k to k + nodeLen - 1 do
+                                sum <- sum + distances.[j]
+                            if minDist.[blockIdx.x] > sum || minIndex.[blockIdx.x] < 0 then
+                                minDist.[blockIdx.x] <- sum
+                                minIndex.[blockIdx.x] <- k / nodeLen
                                     
                     @> |> defineKernelFunc
-            let! pMinimumKernel = pMinimum
 
             let diagnose (stats:KernelExecutionStats) =
                printfn "gpu timing: %10.3f ms %6.2f%% threads(%d) reg(%d) smem(%d)"
@@ -106,24 +74,20 @@ module SomGpuModule1 =
                 nodes |> List.iteri (fun i node ->
                     kernel.Launch lp nodeLen chunk (dNodes.Ptr + i * nodeLen) dMap.Ptr dDist.Ptr (dMinDists.Ptr + i * nBlocks) (dMinIndices.Ptr + i * nBlocks))
               
-                let pMin = pMinimumKernel.Apply m
-                if nBlocks <= 1024 then
-                    pMin nBlocks nodes.Length dMinDists.Ptr dMinIndices.Ptr
-                else
-                    let minDists = dMinDists.ToHost()                                        
-                    let indices = dMinIndices.ToHost()
-                    let mins = (Array.zeroCreate nodes.Length)
+                let minDists = dMinDists.ToHost()                                        
+                let indices = dMinIndices.ToHost()
+                let mins = (Array.zeroCreate nodes.Length)
 
-                    for i = 0 to nodes.Length - 1 do
-                        let baseI = i * nBlocks
-                        let mutable min = minDists.[baseI]
-                        mins.[i] <- indices.[baseI]
-                        for j = 1 to nBlocks - 1 do
-                            if minDists.[baseI + j] < min then
-                                min <-minDists.[baseI + j]
-                                mins.[i] <- indices.[baseI + j]
-                    |> ignore
-                    mins
+                for i = 0 to nodes.Length - 1 do
+                    let baseI = i * nBlocks
+                    let mutable min = minDists.[baseI]
+                    mins.[i] <- indices.[baseI]
+                    for j = 1 to nBlocks - 1 do
+                        if minDists.[baseI + j] < min then
+                            min <-minDists.[baseI + j]
+                            mins.[i] <- indices.[baseI + j]
+                |> ignore
+                mins
                 )
         }
 
