@@ -43,16 +43,17 @@ module SomGpuMassiveFullRotationModule =
                             cell <- cell + shift
                             if cell >= len then
                                 cell <- cell - len
-   
+
+                            let nodeShift = cell % nodeLen
                             if foldedNodeCell < totalNodes * fit || iter < remainderCutoff then
                                 distances.[cell] <- 
-                                    (map.[cell] - nodes.[nodeCell * nodeLen + cell % nodeLen]) 
-                                    * (map.[cell] - nodes.[nodeCell * nodeLen + cell % nodeLen])
+                                    (map.[cell] - nodes.[nodeCell * nodeLen + nodeShift]) 
+                                    * (map.[cell] - nodes.[nodeCell * nodeLen + nodeShift])
 
                                 __syncthreads()
 
                                 // first threads in the block wrap it up for everyone
-                                if cell % nodeLen = 0 then
+                                if nodeShift = 0 then
                                     let mapCell = cell / nodeLen
                                     let mutable distSq = distances.[cell]
                                     for j = 1 to nodeLen - 1 do
