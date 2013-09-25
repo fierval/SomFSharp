@@ -52,12 +52,12 @@ type Som(dims : int * int, nodes : Node seq) as this =
         with get(i1, i2) = this.somMap.[i1, i2]
 
     member this.GetBMU (node : Node) =
-        let min = ref -1.
+        let min = ref Double.MaxValue
         let minI = ref -1
         let minJ = ref -1
         this.somMap |> Array2D.iteri (fun i j e -> 
             let dist = getDistance e node this.Metric
-            if dist < !min || !minI = -1 then min := dist; minI := i; minJ := j)
+            if dist < !min then min := dist; minI := i; minJ := j)
         !minI, !minJ
 
     member this.GetBMUParallel (node : Node) =
@@ -66,7 +66,7 @@ type Som(dims : int * int, nodes : Node seq) as this =
 
         Parallel.ForEach(
             Partitioner.Create(0, fst dims), 
-            (fun () -> ref (0., -1, -1)), 
+            (fun () -> ref (Double.MaxValue, -1, -1)), 
             (fun range state local -> 
                 let mutable(min, minI, minJ) = 
                     match !local with
@@ -74,7 +74,7 @@ type Som(dims : int * int, nodes : Node seq) as this =
                 for i = fst range to snd range - 1 do
                     for j = 0 to snd this.Dimensions - 1 do
                         let dist = getDistance this.somMap.[i, j] node this.Metric
-                        if dist < min || minI = -1 then 
+                        if dist < min then 
                             min <- dist; minI <- i; minJ <- j
                 local := (min, minI, minJ)
                 local),
