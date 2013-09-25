@@ -60,7 +60,7 @@ namespace SomTest
             var gamma = new Gamma(2.0, 1.5);
             gamma.RandomSource = new MersenneTwister();
 
-            var range = Enumerable.Range(1, 1);
+            var range = Enumerable.Range(1, 120);
             var nodes = range.AsParallel().Select(r => new Node(gamma.Samples().Take(12))).ToList();
 
             var som = new Som(new Tuple<int, int>(200, 200), nodes);
