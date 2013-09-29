@@ -63,12 +63,12 @@
     <Compile Include="distance.fs" />
     <Compile Include="som.fs" />
     <Compile Include="somgpu.fs" />
-    <Compile Include="somgpumassive.fs" />
     <Compile Include="somgpumassivefullrotation.fs" />
     <None Include="packages.config" />
   </ItemGroup>
   <ItemGroup>
     <Reference Include="Alea.CUDA, Version=1.1.0.0, Culture=neutral, PublicKeyToken=ba52afc3c2e933d6" />
+    <Reference Include="Alea.Interop, Version=1.1.0.0, Culture=neutral, PublicKeyToken=ba52afc3c2e933d6" />
     <Reference Include="FSharp.Core, Version=4.3.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a" />
     <Reference Include="FSharp.PowerPack.Parallel.Seq">
       <HintPath>packages\FSPowerPack.Parallel.Seq.Community.3.0.0.0\Lib\Net40\FSharp.PowerPack.Parallel.Seq.dll</HintPath>
@@ -82,6 +82,10 @@
     </Reference>
     <Reference Include="MathNet.Numerics.IO">
       <HintPath>packages\MathNet.Numerics.2.6.1\lib\net40\MathNet.Numerics.IO.dll</HintPath>
+      <Private>True</Private>
+    </Reference>
+    <Reference Include="MoreLinq">
+      <HintPath>packages\morelinq.1.0.16006\lib\net35\MoreLinq.dll</HintPath>
       <Private>True</Private>
     </Reference>
     <Reference Include="mscorlib" />

@@ -58,7 +58,7 @@ module SomGpuMassiveFullRotationModule =
                                     let mutable distSq = distances.[cell]
                                     for j = 1 to nodeLen - 1 do
                                         distSq <- distSq + distances.[cell + j]
-                                    if minDist.[foldedNodeCell] > distSq then
+                                    if minDist.[foldedNodeCell] > distSq || iter = 0 then
                                         minDist.[foldedNodeCell] <- distSq
                                         minIndex.[foldedNodeCell] <- mapCell
                 @> |> defineKernelFunc
@@ -82,8 +82,7 @@ module SomGpuMassiveFullRotationModule =
                 let nBlocks = (len + nt - 1) / nt //split the array of nodes into blocks
 
                 use dMap = m.Worker.Malloc(map)
-                let dist = Array.create mapLen Double.MaxValue
-                use dMinDist = m.Worker.Malloc(dist)
+                use dMinDist = m.Worker.Malloc<float>(mapLen)
                 use dIndex = m.Worker.Malloc<int>(mapLen) 
                 use dTemp = m.Worker.Malloc<float>(len)
                 use dNodes = m.Worker.Malloc(nodes.SelectMany(fun n -> n :> float seq).ToArray())
