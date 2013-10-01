@@ -22,13 +22,13 @@ let mainBmuTest argv =
     let rnd = Random(int(DateTime.Now.Ticks))
     let ind = rnd.Next(0, bound)
 
-    let bmu = som1.SingleDimBmu nodes.[ind]
-    let bmuSom = som1.GetBmuGpu nodes.[ind] 0
-
-    if bmu = bmuSom then 
-        printfn "Success!"
-    else
-        printfn "Failed :("
+//    let bmu = som1.SingleDimBmu nodes.[ind]
+//    let bmuSom = som1.GetBmuGpu nodes.[ind] 0
+//
+//    if bmu = bmuSom then 
+//        printfn "Success!"
+//    else
+//        printfn "Failed :("
         
     0
 
@@ -43,21 +43,12 @@ let mainTainTest argv =
     let ind = rnd.Next(0, bound)
 
     som1.Train 10 5
-
-    let bmuExp = som1.GetBMU nodes.[ind]
-    let bmu = som1.toSomCoordinates (som1.GetBmuGpu nodes.[ind] 0)
-
-    if bmu = bmuExp then 
-        printfn "Success!"
-    else
-        printfn "Failed :("
-        
     0
 
 [<EntryPoint>]
 let main argv = 
     
-    for j = 1 to 4 do
+    for j = 4 to 4 do
         let upper = 10. ** float(j)
         let bound = int(floor(upper * 1.2))
         let nodes = ([1..bound] |> Seq.map (fun i -> Node(12))).ToList()
@@ -75,9 +66,9 @@ let main argv =
             let minsGpu2 = som2.GetBmuGpu nodes
             printfn "\tgpu iterations multiple copies of nodes: %10.3f ms" (toc())
 
-//            tic()
-//            let minsGpu1 = som1.Train 1
-//            printfn "\tgpu node-by-node: %10.3f ms" (toc())
+            tic()
+            let minsGpu1 = som1.GetBmuGpu nodes 1
+            printfn "\tgpu node-by-node: %10.3f ms" (toc())
 
 
             if j < 2 then
