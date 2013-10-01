@@ -213,6 +213,24 @@ namespace SomTest
             Assert.AreEqual(i, ijG.Item1);
             Assert.AreEqual(j, ijG.Item2);
         }
+
+        [TestMethod]
+        [TestCategory("Som")]
+        public void TrainGpuTest()
+        {
+            var bound = 12;
+            List<Node> nodes = Enumerable.Range(1, bound).Select(r => new Node(3)).ToList();
+            var som = new SomGpuModule1.SomGpu1(new Tuple<int, int>(5, 5), nodes);
+
+            var rnd = new Random((int)DateTime.Now.Ticks);
+            int ind = rnd.Next(0, bound);
+
+            Tuple<int, int> ij = som.GetBMU(nodes[ind]);
+            var i = ij.Item1;
+            var j = ij.Item2;
+
+            som.SingleDimTrain(nodes[0]);
+        }
         
     }
 }

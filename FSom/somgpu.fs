@@ -15,6 +15,14 @@ module SomGpuModule1 =
         inherit Som(dims, nodes)
 
         let getBlockDim len nThreads = (len + nThreads - 1) / nThreads
+        let stopWatch = Stopwatch()
+
+        let tic () = 
+            stopWatch.Restart()
+
+        let toc () = 
+                stopWatch.Stop()
+                stopWatch.Elapsed.TotalMilliseconds
         
         let somArray =
             let x, y = dims
@@ -58,17 +66,20 @@ module SomGpuModule1 =
                     let modifyTrainRule x =
                             nrule0 * exp(-10.0 * (x * x) / float(epochs * epochs))
 
-                    let nt = dim3(16, 16, nodeLen)
+                    let dim = min width (int(sqrt(float (dimX * dimY / nodeLen))))
+                    let nt =  dim3(dim, dim, nodeLen)
+
                     let nBlocks = dim3(getBlockDim width nt.x, getBlockDim height nt.y, 1)
                     let lp = LaunchParam(nBlocks, nt)
 
-                    let rSq = modifyR (float epoch)
+                    let r = modifyR (float epoch)
                     let nrule = modifyTrainRule (float epoch)
 
                     for i = 0 to mins.Length - 1 do
                         let bmu = mins.[i]
                         let bmuX, bmuY = this.toSomCoordinates bmu
-                        kernelTrain.Launch lp nodeLen len width height bmu bmuX bmuY rSq nrule (dNodes + i * nodeLen) dMap
+                        kernelTrain.Launch lp nodeLen len width height bmu bmuX bmuY (r * r) nrule (dNodes + i * nodeLen) dMap
+                    printfn "epoch: %d, nrule: %10.5f, R: %10.3f, time: %10.3f ms" epoch nrule r (toc())
                 )            
             }
 
@@ -76,7 +87,7 @@ module SomGpuModule1 =
         let pDist = 
             cuda {
                 let! kernel =
-                    <@ fun nodeLen len width height
+                    <@ fun nodeLen len 
                         (node : DevicePtr<float>) 
                         (map :  DevicePtr<float>)
                         (distances : DevicePtr<float>)
@@ -85,22 +96,19 @@ module SomGpuModule1 =
 
                         // index into the original map, assuming
                         // a node is a single entity
-                        let x = blockDim.x * blockIdx.x + threadIdx.x 
-                        let y = blockDim.y * blockIdx.y + threadIdx.y
-
+                        let i = blockDim.x * blockIdx.x + threadIdx.x 
+                        let nodeIndex = threadIdx.x % nodeLen
                         // actual position of the node component in the map
-                        let i = x * width * nodeLen + y * nodeLen + threadIdx.z  
-
                         if i < len then                    
-                            distances.[i] <- (map.[i] - node.[threadIdx.z]) * (map.[i] - node.[threadIdx.z])
-                            if threadIdx.z = 0 then
+                            distances.[i] <- (map.[i] - node.[nodeIndex]) * (map.[i] - node.[nodeIndex])
+                            if nodeIndex = 0 then
                                 __syncthreads()
 
                                 // find the minimum among threads
                                 let mutable sum = 0.
                                 for j = i to i + nodeLen - 1 do
                                     sum <- sum + distances.[j]
-                                minDist.[i] <- sum
+                                minDist.[i / nodeLen] <- sum
                                     
                         @> |> defineKernelFuncWithName "bmu"
 
@@ -114,41 +122,96 @@ module SomGpuModule1 =
                        stats.Kernel.NumRegs
                        stats.Kernel.StaticSharedMemBytes
 
-                return PFunc(fun (m:Module) (nodes : float [] list) epochs ->
+                return 
+                    PFunc(
+                            fun (m:Module) 
+                                (dMap : DeviceMemory<float>) 
+                                (dDist : DeviceMemory<float>) 
+                                (dNodes : DevicePtr<float>) 
+                                (dMinDists : DeviceMemory<float>) 
+                                nodeLen nNodes (nt : int) 
+                                (nBlocks : int) 
+                                ->
+
                     let kernel = kernel.Apply m
+                    let len = somArray.Length
+                    let minIndex = ref 0
+
+                        // Step 1. Find the BMUs
+                    let lp = LaunchParam(nBlocks, nt) //|> Engine.setDiagnoser diagnose
+                    kernel.Launch lp nodeLen len dNodes dMap.Ptr dDist.Ptr dMinDists.Ptr
+                    let minDists = dMinDists.ToHost()
+                    let minVal = ref Double.MaxValue
+                    minDists |> Array.iteri (fun j e -> if e < !minVal then minVal := e; minIndex := j)
+                    !minIndex
+                    )
+            }
+        
+        let pTestBmu = 
+            cuda {
+                let! pdist = pDist
+
+                return PFunc(
+                        fun (m : Module) (nodes : float [] list) i ->
+                    let pdist = pdist.Apply m
 
                     let width, height = fst this.Dimensions, snd this.Dimensions
+                    let nNodes = nodes.Length
 
                     let nodeLen = nodes.[0].Length
                     let len = somArray.Length
-                    let nt =  dim3(dimX, dimY, nodeLen)
-                    let nBlocks = dim3(getBlockDim len nt.x, getBlockDim len nt.y, 1) //map.Length is a multiple of nodeLen by construction
+
+                    let nt =  ((dimX * dimY) / nodeLen) * nodeLen
+                    let nBlocks = getBlockDim len nt 
 
                     use dMap = m.Worker.Malloc(somArray)
                     use dDist = m.Worker.Malloc<float>(len)
                     use dNodes = m.Worker.Malloc(nodes.SelectMany(fun n -> n :> float seq).ToArray())
                     use dMinDists = m.Worker.Malloc<float>(len / nodeLen)
 
-                    let dist = Array.create (len / nodeLen) Double.MaxValue
+                    let lp = LaunchParam(nBlocks, nt) //|> Engine.setDiagnoser diagnose
+                    pdist dMap dDist (dNodes.Ptr + i * nodeLen) dMinDists nodeLen nNodes nt nBlocks
+                        
+                    )
+            }
 
-                    let mins = (Array.zeroCreate nodes.Length)
+        let pTrainSom = 
+            cuda {
+                let! pdist = pDist
+                let! ptrain = pTrain
+                
+                return PFunc(fun (m: Module) (nodes : float [] list) epochs ->
+                    let width, height = fst this.Dimensions, snd this.Dimensions
+
+                    let pdist = pdist.Apply m
+                    let ptrain = ptrain.Apply m
+                    let nNodes = nodes.Length
+
+                    let nodeLen = nodes.[0].Length
+                    let len = somArray.Length
+
+                    let nt =  ((dimX * dimY) / nodeLen) * nodeLen
+                    let nBlocks = getBlockDim len nt 
+
+                    use dMap = m.Worker.Malloc(somArray)
+                    use dDist = m.Worker.Malloc<float>(len)
+                    use dNodes = m.Worker.Malloc(nodes.SelectMany(fun n -> n :> float seq).ToArray())
+                    use dMinDists = m.Worker.Malloc<float>(len / nodeLen)
+                    let lp = LaunchParam(nBlocks, nt) //|> Engine.setDiagnoser diagnose
+
+                    let mins = Array.zeroCreate nNodes
                     for epoch = 0 to epochs - 1 do 
                         // Step 1. Find the BMUs
-                        let lp = LaunchParam(nBlocks, nt) //|> Engine.setDiagnoser diagnose
+                        tic ()
                         nodes |> List.iteri (fun i node ->
-                            kernel.Launch lp nodeLen len width height (dNodes.Ptr + i * nodeLen) dMap.Ptr dDist.Ptr dMinDists.Ptr
-                            let minDists = dMinDists.ToHost()
-                            let minVal = ref Double.MaxValue
-                            minDists |> Array.iteri (fun j e -> if e < !minVal then minVal := e; mins.[i] <- j)
+                            mins.[i] <- pdist dMap dDist (dNodes.Ptr + i * nodeLen) dMinDists nodeLen nNodes nt nBlocks
                             )
   
                         //Step 2. Training.
-                        let ptrain = ptrain.Apply m
                         ptrain epoch epochs mins nodeLen len dNodes.Ptr dMap.Ptr
                     dMap.ToHost()
-                )
+                )    
             }
-
         member this.toArray = somArray
 
         member this.fromArray (somArray : float []) =
@@ -166,11 +229,11 @@ module SomGpuModule1 =
             let len = somArray.Length
             let width, height = fst this.Dimensions, snd this.Dimensions
               
-            let nt =  dim3(dimX, dimY, nodeLen)
-            let nBlocks = dim3(getBlockDim len nt.x, getBlockDim len nt.y, 1) //map.Length is a multiple of nodeLen by construction
+            let dim = min width (int(sqrt(float (dimX * dimY / nodeLen))))
+            let nt =  dim3(dim, dim, nodeLen)
+            let nBlocks = dim3(getBlockDim width nt.x, getBlockDim height nt.y, 1) //map.Length is a multiple of nodeLen by construction
 
             let distances = Array.zeroCreate (somArray.Length)
-            let mins = Array.zeroCreate (somArray.Length / nodeLen)
             let min = ref Double.MaxValue
             let index = ref 0
             let minDist = Array.create (somArray.Length / nodeLen) Double.MaxValue
@@ -180,8 +243,11 @@ module SomGpuModule1 =
                     for threadX = 0 to nt.x - 1 do
                         for threadY = 0 to nt.y - 1 do
                             for threadZ = nt.z - 1 downto 0 do
+                                let x = nt.x * blockX + threadX 
+                                let y = nt.y * blockY + threadY
+
                                // actual position of the node component in the map
-                                let i = blockX * width * nodeLen + blockY * nodeLen + threadZ
+                                let i = x * width * nodeLen + y * nodeLen + threadZ
 
                                 if i < len then                    
                                     // index into the node
@@ -191,23 +257,25 @@ module SomGpuModule1 =
                                         let mutable sum = 0.
                                         for j = i to i + nodeLen - 1 do
                                             sum <- sum + distances.[j]
-                                        minDist.[i] <- sum
+                                        minDist.[i / nodeLen] <- sum
 
-            mins |> Array.iteri (fun i e -> if e < !min then min := e; index := i)
+            let minVal = ref Double.MaxValue
+            minDist |> Array.iteri (fun j e -> if e < !minVal then minVal := e; index := j)
             !index
         
         member this.SingleDimTrain (node : Node) =
             let blockDim len nThreads = (len + nThreads - 1) / nThreads
 
             let width, height = fst this.Dimensions, snd this.Dimensions
+            let nodeLen = nodes.First().Count()
+            let len = somArray.Length
 
             let R0 = float(fst this.Dimensions / 2)
             let nrule0 = 0.9
 
-            let nt = dim3(16, 16)
-            let nBlocks = dim3(blockDim width nt.x, blockDim height nt.y)
-            let nodeLen = nodes.First().Count()
-            let len = somArray.Length
+            let dim = min width (int(sqrt(float (dimX * dimY / nodeLen))))
+            let nt =  dim3(dim, dim, nodeLen)
+            let nBlocks = dim3(blockDim width nt.x, blockDim height nt.y, 1)
 
             let nodes = nodes.SelectMany(fun n -> n :> float seq).ToArray()
             
@@ -219,15 +287,15 @@ module SomGpuModule1 =
                             for threadZ = 0 to nt.z - 1 do
                                 let bmuX, bmuY = this.toSomCoordinates bmu
                                 let rSq = R0 * R0
-                                let x = nBlocks.x * blockX + threadX 
-                                let y = nBlocks.y * blockY + threadY
+                                let x = nt.x * blockX + threadX 
+                                let y = nt.y * blockY + threadY
 
-                                let i = x * width * nodeLen + y * nodeLen
+                                let i = x * width * nodeLen + y * nodeLen + threadZ
 
                                 if i < len then
                                     let distSq = float((bmuX - x) * (bmuX - x) + (bmuY - y) * (bmuY - y))
                                     if distSq < rSq then 
-                                        somArray.[i] <- somArray.[i] + nrule0 * exp(-(10.0 * distSq) / (rSq)) * (node.[threadZ] - somArray.[i])
+                                        somArray.[i] <- somArray.[i] + nrule0 * exp(-(1.0 * distSq) / (rSq)) * (node.[threadZ] - somArray.[i])
 
 
         member this.toSomCoordinates i =
@@ -237,10 +305,16 @@ module SomGpuModule1 =
         
         member this.Train epochs =
             let worker = Engine.workers.DefaultWorker
-            use pfuncm = worker.LoadPModule(pDist)
+            use pfuncm = worker.LoadPModule(pTrainSom)
 
             let somArray = pfuncm.Invoke (nodes |> Seq.map (fun n -> n.ToArray()) |> Seq.toList)  epochs
             this.fromArray somArray
+        
+        member this.GetBmuGpu (node : Node) i =
+            let worker = Engine.workers.DefaultWorker
+            use pfuncm = worker.LoadPModule(pTestBmu)
+
+            pfuncm.Invoke ( [node.ToArray()]) i
 
         member this.MergeNodes () =
             nodes.SelectMany(fun (n : Node) -> n :> IEnumerable<float>)

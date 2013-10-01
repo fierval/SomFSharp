@@ -119,7 +119,7 @@
     <Property Name="EnableToolsExtPushPopRangeTrace" Value="True" />
     <Property Name="EnableToolsExtResourceNaming" Value="True" />
     <Property Name="EnableToolsExtStartEndRangeTrace" Value="True" />
-    <Property Name="ExperimentsPresetConfiguration" Value="AllKernel" />
+    <Property Name="ExperimentsPresetConfiguration" Value="All" />
     <Property Name="ExtensionsToSynchronize" Value="*.*;" />
     <Property Name="ProfileOptionCollectModuleInformation" Value="True" />
     <Property Name="ProfileOptionPrintProgress" Value="False" />
