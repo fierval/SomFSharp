@@ -121,7 +121,11 @@
     <Property Name="EnableToolsExtStartEndRangeTrace" Value="True" />
     <Property Name="ExperimentsPresetConfiguration" Value="All" />
     <Property Name="ExtensionsToSynchronize" Value="*.*;" />
+    <Property Name="InitialReport" Value="CudaLaunches" />
     <Property Name="ProfileOptionCollectModuleInformation" Value="True" />
+    <Property Name="ProfileOptionEnableKernelCaptureLimits" Value="True" />
+    <Property Name="ProfileOptionEnableKernelCounter" Value="True" />
+    <Property Name="ProfileOptionKernelCounterValue" Value="100" />
     <Property Name="ProfileOptionPrintProgress" Value="False" />
     <Property Name="RecurseDirectoriesToSynchronize" Value="False" />
     <Property Name="SynchronizeFiles" Value="False" />

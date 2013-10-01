@@ -7,6 +7,8 @@ open Alea.CUDA
 open System.Diagnostics
 open System.Threading
 open System.Threading.Tasks
+open System.Collections.Concurrent
+open Microsoft.FSharp.Collections
 
 [<AutoOpen>]
 module SomGpuModule1 =
@@ -31,7 +33,7 @@ module SomGpuModule1 =
             this.somMap |> Array2D.iteri (fun i j e -> e |> Seq.iteri (fun k el -> (!arr).[i * x * z + z * j + k] <- el))
             !arr        
                 
-        let dimX, dimY = 16, 16
+        let dimX, dimY = 32, 32
 
         let pTrain = 
             cuda {
@@ -92,27 +94,30 @@ module SomGpuModule1 =
                         (map :  DevicePtr<float>)
                         (distances : DevicePtr<float>)
                         (minDist : DevicePtr<float>)
+                        nodesAtOnce
                         ->
 
                         // index into the original map, assuming
                         // a node is a single entity
                         let i = blockDim.x * blockIdx.x + threadIdx.x 
-                        let nodeIndex = threadIdx.x % nodeLen
+                        let mapI = blockDim.x * blockIdx.x / nodesAtOnce + threadIdx.x
                         // actual position of the node component in the map
-                        if i < len then                    
-                            distances.[i] <- (map.[i] - node.[nodeIndex]) * (map.[i] - node.[nodeIndex])
-                            if nodeIndex = 0 then
+                        if mapI < len then                    
+                            
+                            let nodeIndex = blockIdx.x * blockDim.x / len
+
+                            distances.[i] <- (map.[mapI] - node.[nodeIndex]) * (map.[mapI] - node.[nodeIndex])
+                            if threadIdx.x % nodeLen = 0 then
                                 __syncthreads()
 
                                 // find the minimum among threads
                                 let mutable sum = 0.
                                 for j = i to i + nodeLen - 1 do
                                     sum <- sum + distances.[j]
-                                minDist.[i / nodeLen] <- sum
+                                minDist.[i / nodeLen / nodesAtOnce] <- sum
                                     
-                        @> |> defineKernelFuncWithName "bmu"
-
-                let! ptrain = pTrain
+                        @>  |> defineKernelFuncWithName "bmu"
+                
 
                 let diagnose (stats:KernelExecutionStats) =
                    printfn "gpu timing: %10.3f ms %6.2f%% threads(%d) reg(%d) smem(%d)"
@@ -131,19 +136,28 @@ module SomGpuModule1 =
                                 (dMinDists : DeviceMemory<float>) 
                                 nodeLen nNodes (nt : int) 
                                 (nBlocks : int) 
+                                nodesAtOnce
                                 ->
 
                     let kernel = kernel.Apply m
                     let len = somArray.Length
-                    let minIndex = ref 0
+                    let minIndex = Array.zeroCreate nodesAtOnce
+                    
+                    //let streams = Array.init 2 (fun _ -> Engine.workers.DefaultWorker.CreateStream())
+                    //let lps = streams |> Array.map(fun stream -> LaunchParam(nBlocks, nt, 0, stream))
 
-                        // Step 1. Find the BMUs
+                    // Step 1. Find the BMUs
                     let lp = LaunchParam(nBlocks, nt) //|> Engine.setDiagnoser diagnose
-                    kernel.Launch lp nodeLen len dNodes dMap.Ptr dDist.Ptr dMinDists.Ptr
+                    
+                    kernel.Launch lp nodeLen len dNodes dMap.Ptr dDist.Ptr dMinDists.Ptr nodesAtOnce
+                    //kernel1.Launch m lps.[0] nodeLen len dNodes dMap.Ptr dDist.Ptr dMinDists.Ptr
+                    //kernel2.Launch m lps.[1] nodeLen len (dNodes + nodeLen) dMap.Ptr dDist.Ptr dMinDists.Ptr
+
                     let minDists = dMinDists.ToHost()
-                    let minVal = ref Double.MaxValue
-                    minDists |> Array.iteri (fun j e -> if e < !minVal then minVal := e; minIndex := j)
-                    !minIndex
+                    let minVal = Array.create nodesAtOnce Double.MaxValue
+                    let split = len / nodeLen
+                    minDists |>Array.iteri (fun j e -> if e < minVal.[j / split] then minVal.[j / split] <- e; minIndex.[j / split] <- j)
+                    minIndex
                     )
             }
         
@@ -170,7 +184,7 @@ module SomGpuModule1 =
                     use dMinDists = m.Worker.Malloc<float>(len / nodeLen)
 
                     let lp = LaunchParam(nBlocks, nt) //|> Engine.setDiagnoser diagnose
-                    pdist dMap dDist (dNodes.Ptr + i * nodeLen) dMinDists nodeLen nNodes nt nBlocks
+                    pdist dMap dDist (dNodes.Ptr + i * nodeLen) dMinDists nodeLen nNodes nt nBlocks 1
                         
                     )
             }
@@ -180,7 +194,7 @@ module SomGpuModule1 =
                 let! pdist = pDist
                 let! ptrain = pTrain
                 
-                return PFunc(fun (m: Module) (nodes : float [] list) epochs ->
+                return PFunc(fun (m: Module) (nodes : float [] list) epochs launchAtOnce ->
                     let width, height = fst this.Dimensions, snd this.Dimensions
 
                     let pdist = pdist.Apply m
@@ -191,22 +205,28 @@ module SomGpuModule1 =
                     let len = somArray.Length
 
                     let nt =  ((dimX * dimY) / nodeLen) * nodeLen
-                    let nBlocks = getBlockDim len nt 
+                    let nBlocks = launchAtOnce * getBlockDim len nt 
 
                     use dMap = m.Worker.Malloc(somArray)
-                    use dDist = m.Worker.Malloc<float>(len)
+                    use dDist = m.Worker.Malloc<float>(len * launchAtOnce)
                     use dNodes = m.Worker.Malloc(nodes.SelectMany(fun n -> n :> float seq).ToArray())
-                    use dMinDists = m.Worker.Malloc<float>(len / nodeLen)
+                    use dMinDists = m.Worker.Malloc<float>(len / nodeLen * launchAtOnce)
                     let lp = LaunchParam(nBlocks, nt) //|> Engine.setDiagnoser diagnose
 
                     let mins = Array.zeroCreate nNodes
                     for epoch = 0 to epochs - 1 do 
                         // Step 1. Find the BMUs
                         tic ()
-                        nodes |> List.iteri (fun i node ->
-                            mins.[i] <- pdist dMap dDist (dNodes.Ptr + i * nodeLen) dMinDists nodeLen nNodes nt nBlocks
-                            )
-  
+
+                        let mutable i = 0
+                        while i < nNodes - 1 do
+                            let curMins = pdist dMap dDist (dNodes.Ptr + i * nodeLen) dMinDists nodeLen nNodes nt nBlocks launchAtOnce
+                            for k = 0 to launchAtOnce - 1 do
+                                mins.[i + k] <- curMins.[k]
+                            i <- i + launchAtOnce
+                        printfn "found all minimums for the epoch: %10.3f ms" (toc())
+
+                        tic()
                         //Step 2. Training.
                         ptrain epoch epochs mins nodeLen len dNodes.Ptr dMap.Ptr
                     dMap.ToHost()
@@ -303,18 +323,21 @@ module SomGpuModule1 =
             let y = i - x * fst dims
             x, y
         
-        member this.Train epochs =
+        member this.Train epochs launchAtOnce =
             let worker = Engine.workers.DefaultWorker
             use pfuncm = worker.LoadPModule(pTrainSom)
 
-            let somArray = pfuncm.Invoke (nodes |> Seq.map (fun n -> n.ToArray()) |> Seq.toList)  epochs
+            let pad = nodes.Count() % launchAtOnce
+            let nodes = nodes |> Seq.append ([1..pad] |> Seq.map (fun _ -> Node(nodes.First().Count())))
+            let somArray = pfuncm.Invoke (nodes |> Seq.map (fun n -> n.ToArray()) |> Seq.toList)  epochs launchAtOnce
             this.fromArray somArray
         
         member this.GetBmuGpu (node : Node) i =
             let worker = Engine.workers.DefaultWorker
             use pfuncm = worker.LoadPModule(pTestBmu)
 
-            pfuncm.Invoke ( [node.ToArray()]) i
+            let res = pfuncm.Invoke ( [node.ToArray()]) i
+            res.[0]
 
         member this.MergeNodes () =
             nodes.SelectMany(fun (n : Node) -> n :> IEnumerable<float>)
