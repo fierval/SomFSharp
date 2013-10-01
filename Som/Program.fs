@@ -14,14 +14,13 @@ let toc () =
         stopWatch.Elapsed.TotalMilliseconds
 
 let mainTainTest argv = 
-    let node = Node(11)
-    let bound = 12000
-    let nodes = ([1..bound] |> Seq.map (fun i -> Node(11))).ToList()
+    let bound = 12
+    let nodes = ([1..bound] |> Seq.map (fun i -> Node(12))).ToList()
     let som1 = SomGpu1((200, 200), nodes)
     let som2 = SomGpu2((200, 200), nodes)
 
-    printfn "training with node-by-node bmu\n"
-    som1.Train 5 1
+//    printfn "training with node-by-node bmu\n"
+//    som1.Train 5 3
 
     printfn "training with massive iterations bmu\n"
     som2.Train 5 |> ignore

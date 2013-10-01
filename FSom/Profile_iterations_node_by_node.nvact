@@ -125,7 +125,9 @@
     <Property Name="ProfileOptionCollectModuleInformation" Value="True" />
     <Property Name="ProfileOptionEnableKernelCaptureLimits" Value="True" />
     <Property Name="ProfileOptionEnableKernelCounter" Value="True" />
-    <Property Name="ProfileOptionKernelCounterValue" Value="100" />
+    <Property Name="ProfileOptionEnableKernelSkip" Value="True" />
+    <Property Name="ProfileOptionKernelCounterValue" Value="15" />
+    <Property Name="ProfileOptionKernelSkipValue" Value="15" />
     <Property Name="ProfileOptionPrintProgress" Value="False" />
     <Property Name="RecurseDirectoriesToSynchronize" Value="False" />
     <Property Name="SynchronizeFiles" Value="False" />

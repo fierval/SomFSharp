@@ -15,6 +15,8 @@ module SomGpuMassiveFullRotationModule =
     type SomGpu2(dims, nodes) as this =
         inherit Som(dims, nodes)
         
+        let width, height = fst this.Dimensions, snd this.Dimensions
+
         let somArray =
             let x, y = dims
             let z = this.somMap.[0,0].Count()
@@ -155,28 +157,9 @@ module SomGpuMassiveFullRotationModule =
 
                     @> |> defineKernelFuncWithName "training"
 
-                return PFunc(fun (m:Module) (epoch : int) epochs (mins : int []) nodeLen len (dNodes : DevicePtr<float>) (dMap : DevicePtr<float>) ->   
+                return PFunc(fun (m:Module) (epoch : int) epochs r nrule (nt : dim3) (nBlocks : dim3) (mins : int []) nodeLen len (dNodes : DevicePtr<float>) (dMap : DevicePtr<float>) ->   
                     let kernelTrain = kernelTrain.Apply m
-                 
-                    // training constants                    
-                    let width, height = fst this.Dimensions, snd this.Dimensions
-                    let R0 = float(fst this.Dimensions / 2)
-                    let nrule0 = 0.9
-                    let modifyR x =
-                        R0 * exp(-10.0 * (x * x) / float(epochs * epochs))
-        
-                    let modifyTrainRule x =
-                            nrule0 * exp(-10.0 * (x * x) / float(epochs * epochs))
-
-                    let dim = min width (int(sqrt(float (dimX * dimY / nodeLen))))
-                    let nt =  dim3(dim, dim, nodeLen)
-
-                    let nBlocks = dim3(getBlockDim width nt.x, getBlockDim height nt.y, 1)
                     let lp = LaunchParam(nBlocks, nt)
-
-                    let r = modifyR (float epoch)
-                    let nrule = modifyTrainRule (float epoch)
-
                     for i = 0 to mins.Length - 1 do
                         let bmu = mins.[i]
                         let bmuX, bmuY = this.toSomCoordinates bmu
@@ -243,6 +226,20 @@ module SomGpuMassiveFullRotationModule =
                     use dTemp = m.Worker.Malloc<float>(len)
                     use dNodes = m.Worker.Malloc(nodes.SelectMany(fun n -> n :> float seq).ToArray())
 
+                    // training constants                    
+                    let width, height = fst this.Dimensions, snd this.Dimensions
+                    let R0 = float(fst this.Dimensions / 2)
+                    let nrule0 = 0.9
+                    let modifyR x =
+                        R0 * exp(-10.0 * (x * x) / float(epochs * epochs))
+        
+                    let modifyTrainRule x =
+                            nrule0 * exp(-10.0 * (x * x) / float(epochs * epochs))
+
+                    let dim = min width (int(sqrt(float (dimX * dimY / nodeLen))))
+                    let ntTrain =  dim3(dim, dim, nodeLen)
+
+                    let nBlocksTrain = dim3(getBlockDim width ntTrain.x, getBlockDim height ntTrain.y, 1)
 
                     for epoch = 0 to epochs - 1 do 
                         // Step 1. Find the BMUs
@@ -252,9 +249,12 @@ module SomGpuMassiveFullRotationModule =
                         let mins = pdist dMap dNodes dTemp dMinDists dIndex nodeLen nNodes nt nBlocks
                         printfn "found all minimums for the epoch: %10.3f ms" (toc())
 
+                        let r = modifyR (float epoch)
+                        let nrule = modifyTrainRule (float epoch)
+
                         tic()
                         //Step 2. Training.
-                        ptrain epoch epochs mins nodeLen len dNodes.Ptr dMap.Ptr
+                        ptrain epoch epochs r nrule ntTrain nBlocksTrain mins nodeLen len  dNodes.Ptr dMap.Ptr
                     dMap.ToHost()
                 )    
             }
