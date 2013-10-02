@@ -15,10 +15,10 @@ module SomGpuMassiveFullRotationModule =
     type SomGpu2(dims, nodes) as this =
         inherit Som(dims, nodes)
         
-        let width, height = fst this.Dimensions, snd this.Dimensions
+        let width, height = snd this.Dimensions, fst this.Dimensions
 
         let somArray =
-            let x, y = dims
+            let x, y = width, height
             let z = this.somMap.[0,0].Count()
             let arr : float [] ref = ref (Array.zeroCreate (x * y * z))
             this.somMap |> Array2D.iteri (fun i j e -> e |> Seq.iteri (fun k el -> (!arr).[i * x * z + z * j + k] <- el))
@@ -262,8 +262,8 @@ module SomGpuMassiveFullRotationModule =
         member this.toArray = somArray
                     
         member this.toSomCoordinates i =
-            let x = i / fst dims 
-            let y = i - x * fst dims
+            let x = i / width 
+            let y = i - x * width
             x, y
         
         member this.GetBmuGpuSingle (nodes : Node seq) =

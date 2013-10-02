@@ -14,7 +14,7 @@ let toc () =
         stopWatch.Elapsed.TotalMilliseconds
 
 let mainTainTest argv = 
-    let bound = 12
+    let bound = 12000
     let nodes = ([1..bound] |> Seq.map (fun i -> Node(12))).ToList()
     let som1 = SomGpu1((200, 200), nodes)
     let som2 = SomGpu2((200, 200), nodes)
@@ -30,7 +30,7 @@ let mainTainTest argv =
 //[<EntryPoint>]
 let main argv = 
     
-    for j = 4 to 4 do
+    for j = 3 to 4 do
         let upper = 10. ** float(j)
         let bound = int(floor(upper * 1.2))
         let nodes = ([1..bound] |> Seq.map (fun i -> Node(12))).ToList()
@@ -49,7 +49,7 @@ let main argv =
             printfn "\tgpu iterations multiple copies of nodes: %10.3f ms" (toc())
 
             tic()
-            let minsGpu1 = som1.GetBmuGpu nodes 1
+            let minsGpu1 = som1.GetBmuGpu nodes 
             printfn "\tgpu node-by-node: %10.3f ms" (toc())
 
 
@@ -67,28 +67,50 @@ let main argv =
                 tic()
                 let min = som2.GetBMU(nodes.[ind])
                 printfn "cpu timing for a single node: %10.3f ms" (toc())
-    0
 
 let mainBmuTest argv = 
-    let node = Node(12)
-    let bound = 1200
-    let nodes = ([1..bound] |> Seq.map (fun i -> Node(12))).ToList()
-    let som1 = SomGpu1((200, 200), nodes)
-    let som2 = SomGpu2((200, 200), nodes)
-
-    let rnd = Random(int(DateTime.Now.Ticks))
-    let ind = rnd.Next(0, bound)
-
-    let bmu = som2.GetBMU nodes.[ind]
-    let bmuSom = som2.toSomCoordinates (som2.GetBmuGpu nodes).[ind]
-
-    if bmu = bmuSom then 
-        printfn "Success!"
-    else
-        printfn "Failed :("
+    let bound = 120
+    let dim = 3
+    let nodes = ([1..bound] |> Seq.map (fun i -> Node(11))).ToList()
+    let som1 = SomGpu1((20, dim), nodes)
+    //let som2 = SomGpu2((1, dim), nodes)
+    //let bmus = som2.GetBmuGpuSingle nodes
+    //let bmus = som2.GetBmuGpu nodes
+    let bmus = som1.GetBmuGpu nodes
+    let mutable failed = 0
+    for i = 0 to bound - 1 do
+        let bmu = som1.GetBMU nodes.[i]
+        let bmuSom = som1.toSomCoordinates bmus.[i]
+        //let index = som1.SingleDimBmu nodes.[i]
+        //let bmuSom = som1.toSomCoordinates index
         
-    0
+        if bmu = bmuSom then 
+            () //printfn "Success!"
+        else
+            printfn "ind: %d, bmu: %A, bmuSom: %A" i bmu bmuSom
+            failed <- failed + 1
+    printfn "failed: %d" failed
+
+let classifyTest argv = 
+    let bound = 52000
+    let dim1 = 8
+    let dim2 = 8
+    let nodes = ([1..bound] |> Seq.map (fun i -> Node(12))).ToList()
+    let som1 = SomGpu1((dim1, dim2), nodes)
+    for i = 1 to 3 do
+        printfn "\n"
+        printfn "============================"
+        printfn "\tAttempt: %d" i
+
+        tic()
+        let minsGpu1 = som1.GetBmuGpu nodes 
+        printfn "\tgpu node-by-node: %10.3f ms" (toc())
+
+
 [<EntryPoint>]
 let tests argv =
-    //main argv
-    mainTainTest argv
+    classifyTest argv
+    //mainTainTest argv
+    //for i = 0 to 10 do
+    //mainBmuTest argv
+    0

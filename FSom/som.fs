@@ -27,7 +27,7 @@ type Som(dims : int * int, nodes : Node seq) as this =
 
     let dims = 
         match dims with
-            | (x, y) when x = y && x > 0 -> (x, y)
+            | (x, y) when y > 0 && x > 0 -> (x, y)
             | _ -> failwith "wrong dimensions for the input som."
     let initialize () =
         let x,y = dims
