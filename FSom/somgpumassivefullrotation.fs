@@ -53,7 +53,6 @@ module SomGpuMassiveFullRotationModule =
                         let start = blockIdx.x * blockDim.x
 
                         let mutable cell = start + threadIdx.x
-                        let nodeCell = cell / nodeLen % totalNodes
 
                         if cell < len then
                             let mutable cell = start + threadIdx.x
@@ -72,10 +71,10 @@ module SomGpuMassiveFullRotationModule =
                                         (map.[cell] - nodes.[nodeCell * nodeLen + nodeShift]) 
                                         * (map.[cell] - nodes.[nodeCell * nodeLen + nodeShift])
 
-                                    __syncthreads()
-
                                     // first threads in the block wrap it up for everyone
                                     if nodeShift = 0 then
+                                        __syncthreads()
+
                                         let mapCell = cell / nodeLen
                                         let mutable distSq = distances.[cell]
                                         for j = 1 to nodeLen - 1 do

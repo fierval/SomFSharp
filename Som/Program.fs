@@ -70,17 +70,17 @@ let main argv =
 
 let mainBmuTest argv = 
     let bound = 120
-    let dim = 3
+    let dim = 30
     let nodes = ([1..bound] |> Seq.map (fun i -> Node(11))).ToList()
     let som1 = SomGpu1((20, dim), nodes)
-    //let som2 = SomGpu2((1, dim), nodes)
+    let som2 = SomGpu2((20, dim), nodes)
     //let bmus = som2.GetBmuGpuSingle nodes
-    //let bmus = som2.GetBmuGpu nodes
-    let bmus = som1.GetBmuGpu nodes
+    let bmus = som2.GetBmuGpu nodes
+    //let bmus = som1.GetBmuGpu nodes
     let mutable failed = 0
     for i = 0 to bound - 1 do
-        let bmu = som1.GetBMU nodes.[i]
-        let bmuSom = som1.toSomCoordinates bmus.[i]
+        let bmu = som2.GetBMU nodes.[i]
+        let bmuSom = som2.toSomCoordinates bmus.[i]
         //let index = som1.SingleDimBmu nodes.[i]
         //let bmuSom = som1.toSomCoordinates index
         
@@ -109,8 +109,8 @@ let classifyTest argv =
 
 [<EntryPoint>]
 let tests argv =
-    classifyTest argv
+    //classifyTest argv
     //mainTainTest argv
     //for i = 0 to 10 do
-    //mainBmuTest argv
+    mainBmuTest argv
     0
