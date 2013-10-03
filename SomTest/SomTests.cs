@@ -198,7 +198,7 @@ namespace SomTest
         {
             var bound = 12;
             List<Node> nodes = Enumerable.Range(1, bound).Select(r => new Node(12)).ToList();
-            var som = new SomGpuMassiveFullRotationModule.SomGpu2(new Tuple<int, int>(200, 200), nodes);
+            var som = new somtest.SomGpuTest(new Tuple<int, int>(200, 200), nodes);
 
             var rnd = new Random((int)DateTime.Now.Ticks);
             int ind = rnd.Next(0, bound);
@@ -220,7 +220,7 @@ namespace SomTest
         {
             var bound = 12;
             List<Node> nodes = Enumerable.Range(1, bound).Select(r => new Node(3)).ToList();
-            var som = new SomGpuModule1.SomGpu1(new Tuple<int, int>(5, 5), nodes);
+            var som = new somtest.SomGpuTest(new Tuple<int, int>(5, 5), nodes);
 
             var rnd = new Random((int)DateTime.Now.Ticks);
             int ind = rnd.Next(0, bound);

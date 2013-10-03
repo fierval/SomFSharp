@@ -62,8 +62,9 @@
     <Compile Include="node.fs" />
     <Compile Include="distance.fs" />
     <Compile Include="som.fs" />
+    <Compile Include="somgpubase.fs" />
     <Compile Include="somgpu.fs" />
-    <Compile Include="somgpumassivefullrotation.fs" />
+    <Compile Include="somtest.fs" />
     <None Include="packages.config" />
   </ItemGroup>
   <ItemGroup>

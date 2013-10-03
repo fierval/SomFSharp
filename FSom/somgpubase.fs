@@ -1,30 +1,14 @@
 ﻿namespace FSom
-
+open Alea.CUDA
 open System
+open System.Diagnostics
 open System.Linq
 open System.Collections.Generic
-open Alea.CUDA
-open System.Diagnostics
-open System.Threading
-open System.Threading.Tasks
 
 [<AutoOpen>]
-module SomGpuMassiveFullRotationModule =
-
-
-    type SomGpu2(dims, nodes) as this =
+module kernels =
+    type SomGpuBase(dims, nodes) as this =
         inherit Som(dims, nodes)
-        
-        let width, height = snd this.Dimensions, fst this.Dimensions
-
-        let somArray =
-            let x, y = width, height
-            let z = this.somMap.[0,0].Count()
-            let arr : float [] ref = ref (Array.zeroCreate (x * y * z))
-            this.somMap |> Array2D.iteri (fun i j e -> e |> Seq.iteri (fun k el -> (!arr).[i * x * z + z * j + k] <- el))
-            !arr            
-
-        let getBlockDim len nThreads = (len + nThreads - 1) / nThreads
         let stopWatch = Stopwatch()
 
         let tic () = 
@@ -34,7 +18,139 @@ module SomGpuMassiveFullRotationModule =
                 stopWatch.Stop()
                 stopWatch.Elapsed.TotalMilliseconds
 
-        let pDist = 
+        let getBlockDim len nThreads = (len + nThreads - 1) / nThreads
+        let width, height = snd this.Dimensions, fst this.Dimensions
+
+        let dimX, dimY = 32, 32
+        
+        let somArray =
+            let x, y = width, height
+            let z = this.somMap.[0,0].Count()
+            let arr : float [] ref = ref (Array.zeroCreate (x * y * z))
+            this.somMap |> Array2D.iteri (fun i j e -> e |> Seq.iteri (fun k el -> (!arr).[i * x * z + z * j + k] <- el))
+            !arr        
+
+        member this.pTrain = 
+            cuda {
+                let! kernelTrain = 
+                    <@ fun nodeLen len width height bmu bmuX bmuY rSq nRule
+                        (node : DevicePtr<float>) 
+                        (map :  DevicePtr<float>) 
+                        ->
+
+                        let x = blockDim.x * blockIdx.x + threadIdx.x 
+                        let y = blockDim.y * blockIdx.y + threadIdx.y
+                        
+                        let i = x * width * nodeLen + y * nodeLen + threadIdx.z
+
+                        if i < len then
+                            let distSq = float((bmuX - x) * (bmuX - x) + (bmuY - y) * (bmuY - y))
+                            if distSq < rSq then
+                                map.[i] <- map.[i] + nRule * exp(-(10.0 * distSq) / (rSq)) * (node.[threadIdx.z] - map.[i])                                    
+
+                    @> |> defineKernelFuncWithName "training"
+
+                return PFunc(fun (m:Module) (epoch : int) epochs r nrule (nt : dim3) (nBlocks : dim3) (mins : int []) nodeLen len (dNodes : DevicePtr<float>) (dMap : DevicePtr<float>) ->   
+                    let kernelTrain = kernelTrain.Apply m
+                    let lp = LaunchParam(nBlocks, nt)
+                    for i = 0 to mins.Length - 1 do
+                        let bmu = mins.[i]
+                        let bmuX, bmuY = this.toSomCoordinates bmu
+                        kernelTrain.Launch lp nodeLen len width height bmu bmuX bmuY (r * r) nrule (dNodes + i * nodeLen) dMap
+                    printfn "epoch: %d, nrule: %10.5f, R: %10.3f, time: %10.3f ms" epoch nrule r (toc())
+                )            
+            }
+
+        // training
+        member this.pDistNodeByNode = 
+            cuda {
+                let! kernel =
+                    <@ fun nodeLen len 
+                        (node : DevicePtr<float>) 
+                        (map :  DevicePtr<float>)
+                        (distances : DevicePtr<float>)
+                        (aggDist : DevicePtr<float>)
+                        (minDist : DevicePtr<float>)
+                        (minIndex : DevicePtr<int>)
+                        ->
+
+                        // index into the original map, assuming
+                        // a node is a single entity
+                        let mapI = blockDim.x * blockIdx.x + threadIdx.x
+                        // actual position of the node component in the map
+                        if mapI < len then                    
+                            
+                            let nodeIndex = threadIdx.x % nodeLen
+
+                            distances.[mapI] <- (map.[mapI] - node.[nodeIndex]) * (map.[mapI] - node.[nodeIndex])
+                            if threadIdx.x % nodeLen = 0 then
+                                __syncthreads()
+
+                                // find the minimum among threads
+                                let mutable sum = 0.
+                                for j = mapI to mapI + nodeLen - 1 do
+                                    sum <- sum + distances.[j]
+                                aggDist.[mapI / nodeLen] <- sum
+
+                            // linger a bit longer to find local minimum
+                            if threadIdx.x = 0 then
+                                __syncthreads()
+                                let mutable i = mapI / nodeLen
+                                let mutable j = 0
+
+                                while i < len / nodeLen && j < blockDim.x / nodeLen do
+                                    if aggDist.[i] < minDist.[blockIdx.x] || i = mapI / nodeLen then
+                                        minDist.[blockIdx.x] <- aggDist.[i]
+                                        minIndex.[blockIdx.x] <- i
+                                    i <- i + 1
+                                    j <- j + 1
+                                    
+                        @>  |> defineKernelFuncWithName "bmu"
+                
+
+                let diagnose (stats:KernelExecutionStats) =
+                    printfn "gpu timing: %10.3f ms %6.2f%% threads(%d) reg(%d) smem(%d)"
+                        stats.TimeSpan
+                        (stats.Occupancy * 100.0)
+                        stats.LaunchParam.BlockDim.Size
+                        stats.Kernel.NumRegs
+                        stats.Kernel.StaticSharedMemBytes
+
+                return 
+                    PFunc(
+                            fun (m:Module) 
+                                (dMap : DeviceMemory<float>) 
+                                (dDist : DeviceMemory<float>) 
+                                (dNodes : DevicePtr<float>) 
+                                (dAggDists : DeviceMemory<float>) 
+                                (dMinDists : DeviceMemory<float>) 
+                                (dMinIndex : DeviceMemory<int>)
+                                nodeLen nNodes (nt : int) 
+                                (nBlocks : int) 
+                                
+                                ->
+
+                    let kernel = kernel.Apply m
+                    let len = somArray.Length
+                    let minIndex = ref 0
+                    
+                    // Step 1. Find the BMUs
+                    let lp = LaunchParam(nBlocks, nt) //|> Engine.setDiagnoser diagnose
+                    
+                    kernel.Launch lp nodeLen len dNodes dMap.Ptr dDist.Ptr dAggDists.Ptr dMinDists.Ptr dMinIndex.Ptr
+
+                    let minIndicies = dMinIndex.ToHost()
+                    let minDists = dMinDists.ToHost()
+
+                    let minVal = ref Double.MaxValue
+                    let split = len / nodeLen
+
+                    minDists |>Array.iteri (fun j e -> if e < !minVal then minVal := e; minIndex := minIndicies.[j])
+                    !minIndex
+                    )
+            }
+
+        member this.pDist = 
             cuda {
                 let! kernel =
                     <@ fun len nodeLen totalNodes iter
@@ -134,74 +250,11 @@ module SomGpuMassiveFullRotationModule =
                     finalMinIndex        
                 )
             }
-        let dimX, dimY = 32, 32
 
-        let pTrain = 
+        member this.pTrainSom = 
             cuda {
-                let! kernelTrain = 
-                    <@ fun nodeLen len width height bmu bmuX bmuY rSq nRule
-                        (node : DevicePtr<float>) 
-                        (map :  DevicePtr<float>) 
-                        ->
-
-                        let x = blockDim.x * blockIdx.x + threadIdx.x 
-                        let y = blockDim.y * blockIdx.y + threadIdx.y
-                        
-                        let i = x * width * nodeLen + y * nodeLen + threadIdx.z
-
-                        if i < len then
-                            let distSq = float((bmuX - x) * (bmuX - x) + (bmuY - y) * (bmuY - y))
-                            if distSq < rSq then
-                                map.[i] <- map.[i] + nRule * exp(-(10.0 * distSq) / (rSq)) * (node.[threadIdx.z] - map.[i])                                    
-
-                    @> |> defineKernelFuncWithName "training"
-
-                return PFunc(fun (m:Module) (epoch : int) epochs r nrule (nt : dim3) (nBlocks : dim3) (mins : int []) nodeLen len (dNodes : DevicePtr<float>) (dMap : DevicePtr<float>) ->   
-                    let kernelTrain = kernelTrain.Apply m
-                    let lp = LaunchParam(nBlocks, nt)
-                    for i = 0 to mins.Length - 1 do
-                        let bmu = mins.[i]
-                        let bmuX, bmuY = this.toSomCoordinates bmu
-                        kernelTrain.Launch lp nodeLen len width height bmu bmuX bmuY (r * r) nrule (dNodes + i * nodeLen) dMap
-                    printfn "epoch: %d, nrule: %10.5f, R: %10.3f, time: %10.3f ms" epoch nrule r (toc())
-                )            
-            }
-
-        let pTestBmu = 
-            cuda {
-                let! pdist = pDist
-
-                return PFunc(
-                        fun (m : Module) (nodes : float [] list) ->
-                    let pdist = pdist.Apply m
-
-                    let nNodes = nodes.Length
-                    let nodeLen = nodes.[0].Length
-                    let len = somArray.Length
-
-                    let nt =  ((dimX * dimY) / nodeLen) * nodeLen
-                    let nodeLen = nodes.[0].Length
-                    let mapLen = len / nodeLen
-                    let nt = (dimX * dimY / nodeLen) * nodeLen // number of threads divisible by nodeLen
-                    let fit = len / nodeLen / nNodes
-                    let nBlocks = getBlockDim len nt //split the array of nodes into blocks
-
-                    use dMap = m.Worker.Malloc(somArray)
-                    use dMinDists = m.Worker.Malloc<float>(mapLen)
-                    use dIndex = m.Worker.Malloc<int>(mapLen) 
-                    use dTemp = m.Worker.Malloc<float>(len)
-                    use dNodes = m.Worker.Malloc(nodes.SelectMany(fun n -> n :> float seq).ToArray())
-
-
-                    pdist dMap dNodes dTemp dMinDists dIndex nodeLen nNodes nt nBlocks
-                       
-                    )
-            }
-
-        let pTrainSom = 
-            cuda {
-                let! pdist = pDist
-                let! ptrain = pTrain
+                let! pdist = this.pDist
+                let! ptrain = this.pTrain
                 
                 return PFunc(fun (m: Module) (nodes : float [] list) epochs ->
                     let width, height = fst this.Dimensions, snd this.Dimensions
@@ -257,86 +310,15 @@ module SomGpuMassiveFullRotationModule =
                     dMap.ToHost()
                 )    
             }
-
-        member this.toArray = somArray
-                    
         member this.toSomCoordinates i =
             let x = i / width 
             let y = i - x * width
             x, y
-        
-        member this.GetBmuGpuSingle (nodes : Node seq) =
-            let len = somArray.Length
-            let nodes = nodes.ToArray()
-            let nodeLen = nodes.[0].Count()
-            let totalNodes = nodes.Length
-            let fit = len / nodeLen / totalNodes // how many times the nodes array "fits" the map array
-            let mapLen = len / nodeLen
 
-            let remainderCutoff = (len / nodeLen) %  totalNodes // iteration which will get redundant values for the part of the nodes array that doesn't "fit"
+        member this.asArray = somArray
 
-            let nt = (256 / nodeLen) * nodeLen // number of threads divisible by nodeLen
-            let nBlocks = (len + nt - 1) / nt //split the array of nodes into blocks
-
-            let minDist = Array.create mapLen Double.MaxValue
-            let nodes = nodes.SelectMany(fun n -> n :> float seq).ToArray()
-            let distances = Array.zeroCreate len
-            let minIndex = Array.zeroCreate mapLen
-            let finalMinIndex = Array.zeroCreate totalNodes
-
-            for iter = 0 to len / nodeLen / fit - 1 do
-                for block = 0 to nBlocks - 1 do
-                    let shift = iter * nodeLen
-                    let start = block * nt
-                    for thread = nt - 1 downto 0 do
-                        let mutable cell = start + thread
-                        
-                        let foldedNodeCell = cell / nodeLen // node "mapped" to the length of the map
-                        let nodeCell = cell / nodeLen % totalNodes // actual node
-                        
-                        if cell < len then
-                            cell <- cell + shift
-                            if cell >= len then
-                                cell <- cell - len
-                            
-                            if foldedNodeCell < totalNodes * fit || iter < remainderCutoff then
-                                distances.[cell] <- (somArray.[cell] - nodes.[nodeCell * nodeLen + cell % nodeLen]) * (somArray.[cell] - nodes.[nodeCell * nodeLen + cell % nodeLen])
-
-                                // first threads in the block wrap it up for everyone
-                                if cell % nodeLen = 0 then
-                                    let mapCell = cell / nodeLen
-                                    let mutable distSq = distances.[cell]
-                                    for j = 1 to nodeLen - 1 do
-                                        distSq <- distSq + distances.[cell + j]
-                                    if minDist.[foldedNodeCell] > distSq then
-                                        minDist.[foldedNodeCell] <- distSq
-                                        minIndex.[foldedNodeCell] <- mapCell
-
-            for i in [0..totalNodes - 1] do
-                let stride = totalNodes
-                let mutable min = minDist.[i]
-                finalMinIndex.[i] <- minIndex.[i]
-                let mutable j = i + stride
-
-                while j < mapLen do
-                    if min > minDist.[j] then
-                        min <- minDist.[j]
-                        finalMinIndex.[i] <- minIndex.[j]
-                    j <- j + stride
-            finalMinIndex        
-
-        member this.GetBmuGpu (nodes : Node seq) =
-            let worker = Engine.workers.DefaultWorker
-            use pfuncm = worker.LoadPModule(pTestBmu)
-
-            let mins = pfuncm.Invoke (nodes |> Seq.map (fun n -> n.ToArray()) |> Seq.toList)
-            mins
-
-        member this.MergeNodes () =
-            nodes.SelectMany(fun (n : Node) -> n :> IEnumerable<float>)
-
-        member this.Train epochs =
-            let worker = Engine.workers.DefaultWorker
-            use pfuncm = worker.LoadPModule(pTrainSom)
-
-            pfuncm.Invoke (nodes |> Seq.map (fun n -> n.ToArray()) |> Seq.toList) epochs
+        member this.GetBlockDim len nThreads = getBlockDim len nThreads
+        member this.Width = width
+        member this.Height = height
+        member this.DimX = dimX
+        member this.DimY = dimY
