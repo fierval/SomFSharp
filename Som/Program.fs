@@ -20,7 +20,7 @@ let mainTainTest argv =
     let som1 = SomGpu((200, 200), nodes)
 
     printfn "training with massive iterations bmu\n"
-    som1.Train 5 |> ignore
+    som1.Train 5 false |> ignore
 
     0
 

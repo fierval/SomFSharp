@@ -27,8 +27,8 @@ type Node(weights : float seq) as this =
         | 0 -> failwith "empty node"
         | _ -> ignore()
 
-        this.classs <- ""
-        this.name <- ""
+        this.classs <- String.Empty
+        this.name <- String.Empty
 
     static do
         gamma.RandomSource <- rndSource
@@ -42,14 +42,18 @@ type Node(weights : float seq) as this =
             this.classs <- classs
     
     member this.Display = weights.Aggregate("{", (fun a e -> a + e.ToString() + ", "), (fun a -> a.Substring(0, a.Length - 2) + "}"))
-    member this.Class = this.classs
-    member this.Name = this.name
+    member this.Name 
+        with get () = this.name
+        and set value = this.name <- value
             
     member this.Item 
         with get(index) = weights.[index]
         and set index value = weights.[index] <- value
 
     member this.Dimension = weights.Count
+    member this.Class 
+        with get () = this.classs
+        and set value = this.classs <- value
 
     /// Enumeration interfaces to enable
     /// treatment of node as a sequence of its values

@@ -20,7 +20,7 @@ namespace SomTest
                 new Node(new double [] {255d, 0d, 0d})
             };
 
-            var somGpu = new SomGpuModule.SomGpu(new Tuple<int, int>(6, 6), nodes);
+            var somGpu = new SomGpuModule.SomGpu(new Tuple<int, int>(10, 6), nodes);
             Assert.AreEqual(somGpu[0, 5][1], somGpu.asArray[0 * 6 * 3 + 5 * 3 + 1]);
             Assert.AreEqual(somGpu[2, 4][0], somGpu.asArray[2 * 6 * 3 + 4 * 3 + 0]);
         }

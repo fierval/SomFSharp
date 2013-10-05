@@ -5,8 +5,10 @@ open System.Collections.Generic
 open System.Linq
 
 module somtest =
-    type SomGpuTest(dim, nodes) =
+    type SomGpuTest(dim, nodes : Node seq) =
         inherit SomGpuBase(dim, nodes)
+
+        new (dim : int * int, fileName : string) = SomGpuTest(dim, Som.Read fileName)
 
         member this.GetBmuGpuSingleNodeByNode (node : Node) =
             let arrNode = node.ToArray()
@@ -106,7 +108,7 @@ module somtest =
                         let nBlocks = this.GetBlockDim len nt 
 
                         use dMap = m.Worker.Malloc(this.asArray)
-                        use dDist = m.Worker.Malloc<float>(len)
+                        use dTemp = m.Worker.Malloc<float>(len)
                         use dNodes = m.Worker.Malloc(nodes.SelectMany(fun n -> n :> float seq).ToArray())
                         use dAggDists = m.Worker.Malloc<float>(len / nodeLen)
                         use dMinDists = m.Worker.Malloc<float>(nBlocks)
@@ -116,7 +118,7 @@ module somtest =
                         let mins = Array.zeroCreate nNodes
 
                         for i in [0..nNodes - 1] do
-                            mins.[i] <- pdist dMap dDist (dNodes.Ptr + i * nodeLen) dAggDists dMinDists dMinIndex nodeLen nNodes nt nBlocks
+                            mins.[i] <- pdist dMap dTemp (dNodes.Ptr + i * nodeLen) dAggDists dMinDists dMinIndex nodeLen nNodes nt nBlocks
                         
                         mins
                         )

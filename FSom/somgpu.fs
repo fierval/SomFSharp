@@ -13,23 +13,41 @@ open Microsoft.FSharp.Collections
 [<AutoOpen>]
 module SomGpuModule =
 
-    type SomGpu(dims, nodes) =
+    type SomGpu(dims, nodes : Node seq) =
         inherit SomGpuBase(dims, nodes) 
-        
-        member this.fromArray () =
+        new (dim : int * int, fileName : string) = SomGpu(dim, Som.Read fileName)
+
+        member this.fromArray (somArray : float []) =
             let nodeLen = this.somMap.[0, 0].Count()
             let arr = Array.zeroCreate nodeLen
-            for i = 0 to this.asArray.Length / nodeLen - 1 do    
+            Parallel.For(0, somArray.Length / nodeLen, fun i ->
                 let x, y = this.toSomCoordinates i
                 for j = 0 to nodeLen - 1 do
-                    arr.[j] <- this.asArray.[i * nodeLen + j]
-                this.somMap.[x,y] <- Node(arr)
-                
-        member this.Train epochs =
+                    arr.[j] <- somArray.[i * nodeLen + j]
+                this.somMap.[x,y] <- Node(arr)) |> ignore
+            this.somMap
+                            
+        member this.Train epochs shouldClassify =
             let worker = Engine.workers.DefaultWorker
             use pfuncm = worker.LoadPModule(this.pTrainSom)
 
-            pfuncm.Invoke (nodes |> Seq.map (fun n -> n.ToArray()) |> Seq.toList) epochs
-        
+            pfuncm.Invoke (nodes |> Seq.map (fun n -> n.ToArray()) |> Seq.toList) epochs shouldClassify
+            |> this.fromArray
+
         member this.MergeNodes () =
             nodes.SelectMany(fun (n : Node) -> n :> IEnumerable<float>)
+
+        member this.DistanceMap () =
+            let worker = Engine.workers.DefaultWorker
+            use pfuncm = worker.LoadPModule(this.pDistanceMap)
+
+            let map = pfuncm.Invoke
+            let distMap = Array2D.zeroCreate (this.somMap |> Array2D.length1) (this.somMap |> Array2D.length2)
+            map 
+            |> Seq.iteri 
+                (fun i e -> 
+                    let x, y = this.toSomCoordinates i
+                    distMap.[x, y] <- e
+                )
+            distMap
+

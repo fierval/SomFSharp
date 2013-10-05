@@ -7,8 +7,9 @@ open System.Collections.Generic
 
 [<AutoOpen>]
 module kernels =
-    type SomGpuBase(dims, nodes) as this =
+    type SomGpuBase(dims, nodes : Node seq) as this =
         inherit Som(dims, nodes)
+
         let stopWatch = Stopwatch()
 
         let tic () = 
@@ -19,21 +20,22 @@ module kernels =
                 stopWatch.Elapsed.TotalMilliseconds
 
         let getBlockDim len nThreads = (len + nThreads - 1) / nThreads
-        let width, height = snd this.Dimensions, fst this.Dimensions
 
         let dimX, dimY = 32, 32
         
         let somArray =
-            let x, y = width, height
+            let x, y = this.Width, this.Height
             let z = this.somMap.[0,0].Count()
             let arr : float [] ref = ref (Array.zeroCreate (x * y * z))
             this.somMap |> Array2D.iteri (fun i j e -> e |> Seq.iteri (fun k el -> (!arr).[i * x * z + z * j + k] <- el))
             !arr        
+        
+        new (dim : int * int, fileName : string) = SomGpuBase(dim, Som.Read fileName)
 
         member this.pTrain = 
             cuda {
                 let! kernelTrain = 
-                    <@ fun nodeLen len width height bmu bmuX bmuY rSq nRule
+                    <@ fun nodeLen len width height bmuX bmuY rSq nRule
                         (node : DevicePtr<float>) 
                         (map :  DevicePtr<float>) 
                         ->
@@ -56,11 +58,62 @@ module kernels =
                     for i = 0 to mins.Length - 1 do
                         let bmu = mins.[i]
                         let bmuX, bmuY = this.toSomCoordinates bmu
-                        kernelTrain.Launch lp nodeLen len width height bmu bmuX bmuY (r * r) nrule (dNodes + i * nodeLen) dMap
+                        kernelTrain.Launch lp nodeLen len this.Width this.Height bmuX bmuY (r * r) nrule (dNodes + i * nodeLen) dMap
                     printfn "epoch: %d, nrule: %10.5f, R: %10.3f, time: %10.3f ms" epoch nrule r (toc())
                 )            
             }
 
+        member this.pDistanceMap =
+            cuda {
+                let! kernelDistanceMap = 
+                    <@ fun nodeLen width height 
+                        (map : DevicePtr<float>)
+                        (distMap : DevicePtr<float>) ->
+                        
+                        let x = blockDim.x * blockIdx.x + threadIdx.x 
+                        let y = blockDim.y * blockIdx.y + threadIdx.y
+                        
+                        let i = x * width * nodeLen + y * nodeLen
+
+                        let mutable dist = 0.
+                        let mutable n = 0
+
+                        if i < width * height * nodeLen then 
+                            let len = width * height
+                            for x1 = x - 1 to x + 1 do
+                                for y1 = y - 1 to y + 1 do
+                                    if x1 >= 0 && y1 >= 0 && x1 < len && y1 < len && (x1 <> x || y1 <> y) then
+                                        let j = x1 * width * nodeLen + y1 * nodeLen
+                                        n <- n + 1
+                                        let mutable thisDist = 0.
+                                        for z = 0 to nodeLen - 1 do
+                                            thisDist <- thisDist + (map.[i + z] - map.[j + z]) * (map.[i + z] - map.[j + z])
+                                        dist <- dist + sqrt thisDist
+
+                        distMap.[i] <- dist / float(n)
+
+                    @> |> defineKernelFuncWithName "dist_map"
+            return 
+
+                PFunc (fun (m : Module) -> 
+                    let pDistMap = kernelDistanceMap.Apply m
+                    let len = somArray.Length
+                    let nodeLen = this.somMap.[0, 0].Count()
+                    let nt =  dim3(min this.Width dimY, min this.Height dimX)
+                    let mapLen = len / nodeLen
+                    let nBlocks = dim3(getBlockDim mapLen nt.x, getBlockDim mapLen nt.y)
+
+                    use dMap = m.Worker.Malloc(somArray)
+                    use dDists = m.Worker.Malloc<float>(mapLen)
+                    
+                    let lp = LaunchParam(nBlocks, nt) 
+
+                    pDistMap.Launch lp nodeLen this.Width this.Height dMap.Ptr dDists.Ptr
+                    dDists.ToHost()        
+                )
+                
+
+            }
         // training
         member this.pDistNodeByNode = 
             cuda {
@@ -254,13 +307,14 @@ module kernels =
         member this.pTrainSom = 
             cuda {
                 let! pdist = this.pDist
+                let! pdistNodeByNode = this.pDistNodeByNode
                 let! ptrain = this.pTrain
                 
-                return PFunc(fun (m: Module) (nodes : float [] list) epochs ->
-                    let width, height = fst this.Dimensions, snd this.Dimensions
-
+                return PFunc(fun (m: Module) (nodes : float [] list) epochs shouldClassify ->
                     let pdist = pdist.Apply m
                     let ptrain = ptrain.Apply m
+                    let pdistNodeByNode = pdistNodeByNode.Apply m
+
                     let nNodes = nodes.Length
                     let nodeLen = nodes.[0].Length
                     let len = somArray.Length
@@ -268,19 +322,20 @@ module kernels =
                     let nt =  ((dimX * dimY) / nodeLen) * nodeLen
                     let nodeLen = nodes.[0].Length
                     let mapLen = len / nodeLen
-                    let nt = (dimX * dimY / nodeLen) * nodeLen // number of threads divisible by nodeLen
                     let fit = len / nodeLen / nNodes
                     let nBlocks = getBlockDim len nt //split the array of nodes into blocks
 
                     use dMap = m.Worker.Malloc(somArray)
-                    use dMinDists = m.Worker.Malloc<float>(mapLen)
+                    use dMinDists = if nNodes <= mapLen then m.Worker.Malloc<float>(mapLen) else m.Worker.Malloc<float>(nBlocks)
                     use dIndex = m.Worker.Malloc<int>(mapLen) 
                     use dTemp = m.Worker.Malloc<float>(len)
                     use dNodes = m.Worker.Malloc(nodes.SelectMany(fun n -> n :> float seq).ToArray())
 
+                    use dAggDists = m.Worker.Malloc<float>(len / nodeLen)
+                    use dMinIndex = m.Worker.Malloc<int>(nBlocks)
+
                     // training constants                    
-                    let width, height = fst this.Dimensions, snd this.Dimensions
-                    let R0 = float(fst this.Dimensions / 2)
+                    let R0 = float(this.Width / 2)
                     let nrule0 = 0.9
                     let modifyR x =
                         R0 * exp(-10.0 * (x * x) / float(epochs * epochs))
@@ -288,37 +343,68 @@ module kernels =
                     let modifyTrainRule x =
                             nrule0 * exp(-10.0 * (x * x) / float(epochs * epochs))
 
-                    let dim = min width (int(sqrt(float (dimX * dimY / nodeLen))))
+                    let dim = min this.Width (int(sqrt(float (dimX * dimY / nodeLen))))
                     let ntTrain =  dim3(dim, dim, nodeLen)
 
-                    let nBlocksTrain = dim3(getBlockDim width ntTrain.x, getBlockDim height ntTrain.y, 1)
+                    let nBlocksTrain = dim3(getBlockDim this.Width ntTrain.x, getBlockDim this.Height ntTrain.y, 1)
+                    let mins = ref (Array.zeroCreate nNodes)
+
+                    let getMins i =
+                        mins :=
+                            if nNodes <= mapLen  then
+                                pdist dMap dNodes dTemp dMinDists dIndex nodeLen nNodes nt nBlocks
+                            else
+                                [|for i = 0 to nodeLen - 1 do
+                                    yield pdistNodeByNode dMap dTemp (dNodes.Ptr + i * nodeLen) dAggDists dMinDists dMinIndex nodeLen nNodes nt nBlocks|]
 
                     for epoch = 0 to epochs - 1 do 
                         // Step 1. Find the BMUs
                         tic ()
 
                         let mutable i = 0
-                        let mins = pdist dMap dNodes dTemp dMinDists dIndex nodeLen nNodes nt nBlocks
+                        getMins i
                         printfn "found all minimums for the epoch: %10.3f ms" (toc())
 
                         let r = modifyR (float epoch)
                         let nrule = modifyTrainRule (float epoch)
 
                         tic()
+
                         //Step 2. Training.
-                        ptrain epoch epochs r nrule ntTrain nBlocksTrain mins nodeLen len  dNodes.Ptr dMap.Ptr
+                        ptrain epoch epochs r nrule ntTrain nBlocksTrain !mins nodeLen len  dNodes.Ptr dMap.Ptr
+
+                    //Step 3. Classification
+                    if shouldClassify then
+                        let classes = this.InitClasses()
+
+                        for epoch = 0 to epochs - 1 do
+                            tic ()
+
+                            let mutable i = 0
+                            getMins i
+                            let nrule = modifyTrainRule (float epoch)
+
+                            tic()
+                            !mins |> Seq.iteri 
+                                (fun i bmu ->
+                                    let (xBmu, yBmu) = this.toSomCoordinates bmu
+                                    let mapNode = this.somMap.[xBmu, yBmu]
+                    
+                                    let y = if mapNode.Class = this.InputNodes.[i].Class then 1. else -1.                  
+                                    this.trainNode this.somMap.[xBmu, yBmu] this.InputNodes.[i] (nrule * y)
+                                    printfn "classified for epoch: %d in %10.3f ms" epoch (toc())
+                                )
+
                     dMap.ToHost()
                 )    
             }
         member this.toSomCoordinates i =
-            let x = i / width 
-            let y = i - x * width
+            let x = i / this.Width 
+            let y = i - x * this.Width
             x, y
 
         member this.asArray = somArray
 
         member this.GetBlockDim len nThreads = getBlockDim len nThreads
-        member this.Width = width
-        member this.Height = height
         member this.DimX = dimX
         member this.DimY = dimY
