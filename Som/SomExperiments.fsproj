@@ -10,7 +10,7 @@
     <RootNamespace>Som</RootNamespace>
     <AssemblyName>Som</AssemblyName>
     <TargetFrameworkVersion>v4.5</TargetFrameworkVersion>
-    <Name>Som</Name>
+    <Name>SomExperiments</Name>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
     <DebugSymbols>true</DebugSymbols>

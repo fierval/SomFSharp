@@ -3,7 +3,6 @@ open System.Linq
 open System.Collections.Generic
 open System
 open System.Diagnostics
-open somtest
 
 let stopWatch = Stopwatch()
 
@@ -31,7 +30,7 @@ let main argv =
         let upper = 10. ** float(j)
         let bound = int(floor(upper * 1.2))
         let nodes = ([1..bound] |> Seq.map (fun i -> Node(12))).ToList()
-        let som1 = SomGpuTest((200, 200), nodes)
+        let som1 = SomGpu((200, 200), nodes)
 
         printfn "\n"
         printfn "Number of nodes: %d" bound
@@ -68,7 +67,7 @@ let mainBmuTest argv =
     let bound = 120
     let dim = 30
     let nodes = ([1..bound] |> Seq.map (fun i -> Node(11))).ToList()
-    let som1 = SomGpuTest((20, dim), nodes)
+    let som1 = SomGpu((20, dim), nodes)
     let bmus = som1.GetBmuGpu nodes
     let mutable failed = 0
     for i = 0 to bound - 1 do
@@ -87,7 +86,7 @@ let classifyTest argv =
     let dim1 = 8
     let dim2 = 8
     let nodes = ([1..bound] |> Seq.map (fun i -> Node(12))).ToList()
-    let som1 = SomGpuTest((dim1, dim2), nodes)
+    let som1 = SomGpu((dim1, dim2), nodes)
     for i = 1 to 3 do
         printfn "\n"
         printfn "============================"

@@ -50,6 +50,18 @@ type Som(dims : int * int, nodes : Node seq) as this =
         
     let modifyTrainRule x epochs =
         nrule0 * exp(-10.0 * (x * x) / float(epochs * epochs))
+
+    let getBlockDim len nThreads = (len + nThreads - 1) / nThreads
+
+    let dimX, dimY = 32, 32
+        
+    let somArray =
+        let x, y = this.Width, this.Height
+        let z = this.somMap.[0,0].Count()
+        let arr : float [] ref = ref (Array.zeroCreate (x * y * z))
+        this.somMap |> Array2D.iteri (fun i j e -> e |> Seq.iteri (fun k el -> (!arr).[i * x * z + z * j + k] <- el))
+        !arr        
+
     do
         this.somMap <- initialize()
 
@@ -82,6 +94,18 @@ type Som(dims : int * int, nodes : Node seq) as this =
 
     new (dim : int * int, fileName : string) = Som(dim, Som.Read fileName)
     
+    member this.toSomCoordinates i =
+        let x = i / this.Width 
+        let y = i - x * this.Width
+        x, y
+
+    member this.asArray = somArray
+
+    member this.GetBlockDim len nThreads = getBlockDim len nThreads
+    member this.DimX = dimX
+    member this.DimY = dimY
+
+    member this.NodeLen = this.somMap.[0,0].Count()
     member this.Width = width
     member this.Height = height
     member this.Metric 
@@ -182,7 +206,7 @@ type Som(dims : int * int, nodes : Node seq) as this =
         train R0 nrule0 0 epochs isParallel
 
     member this.InitClasses () =
-        let classes = (this.somMap |> Seq.cast<Node> |> Seq.map (fun n -> n.Class)).Distinct()
+        let classes = (this.somMap |> Seq.cast<Node> |> Seq.map (fun n -> n.Class)).Distinct().Where(fun c -> not (String.IsNullOrEmpty(c)))
         // randomly assign classes
         let rnd = Random(int32(DateTime.Now.Ticks))
         classes |> Seq.iter( fun c -> this.somMap.[rnd.Next(0, height), rnd.Next(0, width)].Class <- c)
@@ -209,3 +233,22 @@ type Som(dims : int * int, nodes : Node seq) as this =
 
         classify 0 epochs nrule0
     
+    member this.LinearGetDistanceMap () =
+        let distMap = Array2D.zeroCreate (this.somMap |> Array2D.length1) (this.somMap |> Array2D.length2)
+        this.somMap 
+        |> Array2D.iteri 
+            (fun i j e ->
+                let dist = ref 0.
+                let n = ref 0.
+                for x1 = i - 1 to i + 1 do
+                    for y1 = j - 1 to j + 1 do
+                        if x1 >= 0 && y1 >= 0 && x1 < this.Height && y1 < this.Width && (x1 <> i || y1 <> j) then
+                            n := !n + 1.
+                            this.somMap.[i, j] |> Seq.iter2 (fun n1 n2 -> dist := !dist + (n1 - n2) ** 2.) this.somMap.[x1, y1]
+                distMap.[i, j] <- !dist
+            )
+    member this.Save fileName =
+        if String.IsNullOrWhiteSpace fileName then failwith "File name must be specified"
+
+        if File.Exists fileName then File.Delete fileName
+

@@ -198,7 +198,7 @@ namespace SomTest
         {
             var bound = 12;
             List<Node> nodes = Enumerable.Range(1, bound).Select(r => new Node(12)).ToList();
-            var som = new somtest.SomGpuTest(new Tuple<int, int>(200, 200), nodes);
+            var som = new SomGpuTest(new Tuple<int, int>(200, 200), nodes);
 
             var rnd = new Random((int)DateTime.Now.Ticks);
             int ind = rnd.Next(0, bound);
@@ -220,7 +220,7 @@ namespace SomTest
         {
             var bound = 12;
             List<Node> nodes = Enumerable.Range(1, bound).Select(r => new Node(3)).ToList();
-            var som = new somtest.SomGpuTest(new Tuple<int, int>(5, 5), nodes);
+            var som = new SomGpuTest(new Tuple<int, int>(5, 5), nodes);
 
             var rnd = new Random((int)DateTime.Now.Ticks);
             int ind = rnd.Next(0, bound);
@@ -231,6 +231,30 @@ namespace SomTest
 
             som.SingleDimTrain(nodes[0]);
         }
+
+        [TestMethod]
+        [TestCategory("Som")]
+        public void DistMapSingleTest()
+        {
+            List<Node> nodes = new List<Node>()
+            {
+                new Node(new double [] {0d, 0d, 255d}),
+                new Node(new double [] {0d, 255d, 0d}),
+                new Node(new double [] {255d, 0d, 0d})
+            };
+
+            var som = new SomGpuTest(new Tuple<int, int>(6, 6), nodes);
+            var dist = som.GetDistanceMapSingle();
+            Assert.IsNotNull(dist);
+        }
         
+        [TestMethod]
+        [TestCategory("IO")]
+        [DeploymentItem("patents.txt")]
+        public void ReadTest()
+        {
+            var som = SomGpu.Read("patents.txt");
+            Assert.IsNotNull(som);
+        }
     }
 }

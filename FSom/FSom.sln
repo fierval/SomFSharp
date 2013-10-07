@@ -5,7 +5,7 @@ Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "FSom", "FSom.fsproj", "{782
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SomTest", "..\SomTest\SomTest.csproj", "{691C19A5-981D-4E3B-BB6B-8D3039ACAA4A}"
 EndProject
-Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Som", "..\Som\Som.fsproj", "{1847489F-82BA-4BAA-9E03-1AF93FE63C51}"
+Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "SomExperiments", "..\Som\SomExperiments.fsproj", "{1847489F-82BA-4BAA-9E03-1AF93FE63C51}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
