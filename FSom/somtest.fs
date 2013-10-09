@@ -1,8 +1,21 @@
 ﻿namespace FSom
-open Alea.CUDA
 open System
 open System.Collections.Generic
 open System.Linq
+open System.Diagnostics
+
+[<DebuggerDisplay("({x}, {y}, {z})")>]
+type dims =
+    struct
+        val x : int
+        val y : int
+        val z : int
+        new (x, y, z) = {x = x; y = y; z = z}
+        new (x, y) = dims(x, y, 1)
+        new (x) = dims(x, 1, 1)
+    end
+
+   
 
 type SomGpuTest(dim, nodes : Node seq) =
     inherit Som(dim, nodes)
@@ -68,8 +81,8 @@ type SomGpuTest(dim, nodes : Node seq) =
         let nrule0 = 0.9
 
         let dim = min this.Width (int(sqrt(float (this.DimX * this.DimY / nodeLen))))
-        let nt =  dim3(dim, dim, nodeLen)
-        let nBlocks = dim3(blockDim this.Width nt.x, blockDim this.Height nt.y, 1)
+        let nt =  dims(dim, dim, nodeLen)
+        let nBlocks = dims(blockDim this.Width nt.x, blockDim this.Height nt.y, 1)
 
         let nodes = nodes.SelectMany(fun n -> n :> float seq).ToArray()
             
@@ -157,43 +170,44 @@ type SomGpuTest(dim, nodes : Node seq) =
         let len = this.asArray.Length
         let map = this.asArray
         let nodeLen = this.NodeLen
-        let nt =  dim3(min this.Height this.DimX, min this.Width this.DimY)
+        let nt =  dims(min this.Height this.DimX, min this.Width this.DimY)
         let mapLen = len / nodeLen
-        let nBlocks = dim3(this.GetBlockDim mapLen nt.x, this.GetBlockDim mapLen nt.y)
+        let nBlocks = dims(this.GetBlockDim this.Height nt.x, this.GetBlockDim this.Width nt.y)
         let distMap = Array.zeroCreate (this.Height * this.Width)
 
         for blockX = 0 to nBlocks.x - 1 do
             for blockY = 0 to nBlocks.y - 1 do
                 for threadX = 0 to nt.x - 1 do
                     for threadY = 0 to nt.y - 1 do
-                        let x = nBlocks.x * blockY + threadX
-                        let y = nBlocks.y * blockY + threadY
-                        
-                        let i = x * this.Width * nodeLen + y * nodeLen
-                        let mutable dist = 0.
-                        let mutable n = 0
+                        let x = nt.x * blockX + threadX
+                        let y = nt.y * blockY + threadY
 
-                        if i < this.Width * this.Height * nodeLen then 
-                            let len = this.Width * this.Height
+                        if y < this.Width && x < this.Height then 
+                            let i = x * this.Width + y
+                            let mutable dist = 0.
+                            let mutable n = 0
+
                             for x1 = x - 1 to x + 1 do
                                 for y1 = y - 1 to y + 1 do
-                                    if x1 >= 0 && y1 >= 0 && x1 < len && y1 < len && (x1 <> x || y1 <> y) then
+                                    if x1 >= 0 && y1 >= 0 && x1 < this.Height && y1 < this.Width && (x1 <> x || y1 <> y) then
                                         let j = x1 * this.Width * nodeLen + y1 * nodeLen
                                         n <- n + 1
                                         let mutable thisDist = 0.
                                         for z = 0 to nodeLen - 1 do
-                                            thisDist <- thisDist + (map.[i + z] - map.[j + z]) * (map.[i + z] - map.[j + z])
+                                            thisDist <- thisDist 
+                                                + (map.[i * nodeLen + z] - map.[j + z])
+                                                * (map.[i * nodeLen + z] - map.[j + z])
                                         dist <- dist + sqrt thisDist
 
-                        distMap.[i] <- dist / float(n)
+                            distMap.[i] <- dist / float(n)
 
-        let distMap = 
+        let distMapOut = 
             Array2D.init 
                 (this.somMap |> Array2D.length1) 
                 (this.somMap |> Array2D.length2) 
                 (fun i j -> 
-                    map.[i * this.Height + j]
+                    distMap.[i * this.Width + j]
                     )
-        distMap
+        distMapOut
 
             

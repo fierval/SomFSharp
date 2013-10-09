@@ -55,13 +55,6 @@ type Som(dims : int * int, nodes : Node seq) as this =
 
     let dimX, dimY = 32, 32
         
-    let somArray =
-        let x, y = this.Width, this.Height
-        let z = this.somMap.[0,0].Count()
-        let arr : float [] ref = ref (Array.zeroCreate (x * y * z))
-        this.somMap |> Array2D.iteri (fun i j e -> e |> Seq.iteri (fun k el -> (!arr).[i * x * z + z * j + k] <- el))
-        !arr        
-
     do
         this.somMap <- initialize()
 
@@ -93,13 +86,21 @@ type Som(dims : int * int, nodes : Node seq) as this =
         nodes.AsEnumerable()
 
     new (dim : int * int, fileName : string) = Som(dim, Som.Read fileName)
+
+    member this.ModifyTrainRule x epochs =
+        nrule0 * exp(-10.0 * (x * x) / float(epochs * epochs))
     
     member this.toSomCoordinates i =
         let x = i / this.Width 
         let y = i - x * this.Width
         x, y
 
-    member this.asArray = somArray
+    member this.asArray = 
+        let x, y = width, height
+        let z = this.somMap.[0,0].Count()
+        let arr : float [] ref = ref (Array.zeroCreate (x * y * z))
+        this.somMap |> Array2D.iteri (fun i j e -> e |> Seq.iteri (fun k el -> (!arr).[i * x * z + z * j + k] <- el))
+        !arr        
 
     member this.GetBlockDim len nThreads = getBlockDim len nThreads
     member this.DimX = dimX
@@ -206,15 +207,14 @@ type Som(dims : int * int, nodes : Node seq) as this =
         train R0 nrule0 0 epochs isParallel
 
     member this.InitClasses () =
-        let classes = (this.somMap |> Seq.cast<Node> |> Seq.map (fun n -> n.Class)).Distinct().Where(fun c -> not (String.IsNullOrEmpty(c)))
+        let classes = (this.somMap |> Seq.cast<Node> |> Seq.map (fun n -> n.Class)).Distinct().Where(fun c -> not (String.IsNullOrEmpty(c))).ToList()
         // randomly assign classes
         let rnd = Random(int32(DateTime.Now.Ticks))
-        classes |> Seq.iter( fun c -> this.somMap.[rnd.Next(0, height), rnd.Next(0, width)].Class <- c)
-        this.somMap |> Array2D.map(fun e -> e.Class)
+        this.somMap |> Array2D.iter(fun e -> e.Class <- classes.[rnd.Next(0, classes.Count)])
 
-    member this.Classify epochs =
+    member this.TrainClassifier epochs =
         let totalEpochs = epochs
-        this.InitClasses() |> ignore
+        this.InitClasses()
 
         let rec classify epoch epochs rule = 
             if epochs = 0 then ()
@@ -244,9 +244,13 @@ type Som(dims : int * int, nodes : Node seq) as this =
                     for y1 = j - 1 to j + 1 do
                         if x1 >= 0 && y1 >= 0 && x1 < this.Height && y1 < this.Width && (x1 <> i || y1 <> j) then
                             n := !n + 1.
-                            this.somMap.[i, j] |> Seq.iter2 (fun n1 n2 -> dist := !dist + (n1 - n2) ** 2.) this.somMap.[x1, y1]
-                distMap.[i, j] <- !dist
+                            let thisDist = ref 0.
+                            this.somMap.[i, j] |> Seq.iter2 (fun n1 n2 -> thisDist := !thisDist + (n1 - n2) ** 2.) this.somMap.[x1, y1]
+                            dist := !dist + sqrt !thisDist
+                distMap.[i, j] <- !dist / !n
             )
+        distMap
+
     member this.Save fileName =
         if String.IsNullOrWhiteSpace fileName then failwith "File name must be specified"
 

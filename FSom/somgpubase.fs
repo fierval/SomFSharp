@@ -29,10 +29,10 @@ type SomGpuBase(dims, nodes : Node seq) =
 
                     let x = blockDim.x * blockIdx.x + threadIdx.x 
                     let y = blockDim.y * blockIdx.y + threadIdx.y
-                        
-                    let i = x * width * nodeLen + y * nodeLen + threadIdx.z
-
-                    if i < len then
+                    
+                    if x < height && y < width then    
+                        let i = x * width * nodeLen + y * nodeLen + threadIdx.z
+                    
                         let distSq = float((bmuX - x) * (bmuX - x) + (bmuY - y) * (bmuY - y))
                         if distSq < rSq then
                             map.[i] <- map.[i] + nRule * exp(-(10.0 * distSq) / (rSq)) * (node.[threadIdx.z] - map.[i])                                    
@@ -59,25 +59,24 @@ type SomGpuBase(dims, nodes : Node seq) =
                         
                     let x = blockDim.x * blockIdx.x + threadIdx.x 
                     let y = blockDim.y * blockIdx.y + threadIdx.y
-                        
-                    let i = x * width * nodeLen + y * nodeLen
 
-                    let mutable dist = 0.
-                    let mutable n = 0
+                    if y < width && x < height then 
+                        let i = x * width + y
 
-                    if i < width * height * nodeLen then 
-                        let len = width * height
+                        let mutable dist = 0.
+                        let mutable n = 0
+
                         for x1 = x - 1 to x + 1 do
                             for y1 = y - 1 to y + 1 do
-                                if x1 >= 0 && y1 >= 0 && x1 < len && y1 < len && (x1 <> x || y1 <> y) then
+                                if x1 >= 0 && y1 >= 0 && x1 < width && y1 < height && (x1 <> x || y1 <> y) then
                                     let j = x1 * width * nodeLen + y1 * nodeLen
                                     n <- n + 1
                                     let mutable thisDist = 0.
                                     for z = 0 to nodeLen - 1 do
-                                        thisDist <- thisDist + (map.[i + z] - map.[j + z]) * (map.[i + z] - map.[j + z])
+                                        thisDist <- thisDist + (map.[i * nodeLen + z] - map.[j + z]) * (map.[i * nodeLen + z] - map.[j + z])
                                     dist <- dist + sqrt thisDist
 
-                    distMap.[i] <- dist / float(n)
+                        distMap.[i] <- dist / float(n)
 
                 @> |> defineKernelFuncWithName "dist_map"
         return 
@@ -88,7 +87,7 @@ type SomGpuBase(dims, nodes : Node seq) =
                 let nodeLen = this.NodeLen
                 let nt =  dim3(min this.Height this.DimX, min this.Width this.DimY)
                 let mapLen = len / nodeLen
-                let nBlocks = dim3(this.GetBlockDim mapLen nt.x, this.GetBlockDim mapLen nt.y)
+                let nBlocks = dim3(this.GetBlockDim this.Height nt.x, this.GetBlockDim this.Width nt.y)
 
                 use dMap = m.Worker.Malloc(this.asArray)
                 use dDists = m.Worker.Malloc<float>(mapLen)
@@ -297,7 +296,7 @@ type SomGpuBase(dims, nodes : Node seq) =
             let! pdistNodeByNode = this.pDistNodeByNode
             let! ptrain = this.pTrain
                 
-            return PFunc(fun (m: Module) (nodes : float [] list) epochs shouldClassify ->
+            return PFunc(fun (m: Module) (nodes : float [] list) epochs ->
                 let pdist = pdist.Apply m
                 let ptrain = ptrain.Apply m
                 let pdistNodeByNode = pdistNodeByNode.Apply m
@@ -336,20 +335,19 @@ type SomGpuBase(dims, nodes : Node seq) =
                 let nBlocksTrain = dim3(this.GetBlockDim this.Width ntTrain.x, this.GetBlockDim this.Height ntTrain.y, 1)
                 let mins = ref (Array.zeroCreate nNodes)
 
-                let getMins i =
+                let getMins () =
                     mins :=
                         if nNodes <= mapLen  then
                             pdist dMap dNodes dTemp dMinDists dIndex nodeLen nNodes nt nBlocks
                         else
-                            [|for i = 0 to nodeLen - 1 do
+                            [|for i = 0 to nNodes - 1 do
                                 yield pdistNodeByNode dMap dTemp (dNodes.Ptr + i * nodeLen) dAggDists dMinDists dMinIndex nodeLen nNodes nt nBlocks|]
 
                 for epoch = 0 to epochs - 1 do 
                     // Step 1. Find the BMUs
                     tic ()
 
-                    let mutable i = 0
-                    getMins i
+                    getMins()
                     printfn "found all minimums for the epoch: %10.3f ms" (toc())
 
                     let r = modifyR (float epoch)
@@ -359,29 +357,6 @@ type SomGpuBase(dims, nodes : Node seq) =
 
                     //Step 2. Training.
                     ptrain epoch epochs r nrule ntTrain nBlocksTrain !mins nodeLen len  dNodes.Ptr dMap.Ptr
-
-                //Step 3. Classification
-                if shouldClassify then
-                    let classes = this.InitClasses()
-
-                    for epoch = 0 to epochs - 1 do
-                        tic ()
-
-                        let mutable i = 0
-                        getMins i
-                        let nrule = modifyTrainRule (float epoch)
-
-                        tic()
-                        !mins |> Seq.iteri 
-                            (fun i bmu ->
-                                let (xBmu, yBmu) = this.toSomCoordinates bmu
-                                let mapNode = this.somMap.[xBmu, yBmu]
-                                if not (String.IsNullOrEmpty(this.InputNodes.[i].Class)) then
-                                    let y = if mapNode.Class = this.InputNodes.[i].Class then 1. else -1.                  
-                                    this.trainNode this.somMap.[xBmu, yBmu] this.InputNodes.[i] (nrule * y)
-                            )
-
-                        printfn "classified for epoch: %d in %10.3f ms" epoch (toc())
 
                 dMap.ToHost()
             )    
@@ -450,3 +425,45 @@ type SomGpuBase(dims, nodes : Node seq) =
                     )
             }
 
+        member this.pTestUnifiedBmu = 
+            cuda {
+                let! pdist = this.pDist
+                let! pdistNodeByNode = this.pDistNodeByNode
+
+                return PFunc(
+                        fun (m : Module) (nodes : float [] list) ->
+                    let pdist = pdist.Apply m
+                    let pdistNodeByNode = pdistNodeByNode.Apply m
+
+                    let nNodes = nodes.Length
+                    let nodeLen = nodes.[0].Length
+                    let len = this.asArray.Length
+
+                    let nt =  ((this.DimX * this.DimY) / nodeLen) * nodeLen
+                    let nodeLen = nodes.[0].Length
+                    let mapLen = len / nodeLen
+                    let fit = len / nodeLen / nNodes
+                    let nBlocks = this.GetBlockDim len nt //split the array of nodes into blocks
+
+                    use dMap = m.Worker.Malloc(this.asArray)
+                    use dMinDists = if nNodes <= mapLen then m.Worker.Malloc<float>(mapLen) else m.Worker.Malloc<float>(nBlocks)
+                    use dIndex = m.Worker.Malloc<int>(mapLen) 
+                    use dTemp = m.Worker.Malloc<float>(len)
+                    use dNodes = m.Worker.Malloc(nodes.SelectMany(fun n -> n :> float seq).ToArray())
+
+                    use dAggDists = m.Worker.Malloc<float>(len / nodeLen)
+                    use dMinIndex = m.Worker.Malloc<int>(nBlocks)
+                    let mins = ref (Array.zeroCreate nNodes)
+
+                    let getMins () =
+                        mins :=
+                            if nNodes <= mapLen  then
+                                pdist dMap dNodes dTemp dMinDists dIndex nodeLen nNodes nt nBlocks
+                            else
+                                [|for i = 0 to nNodes - 1 do
+                                    yield pdistNodeByNode dMap dTemp (dNodes.Ptr + i * nodeLen) dAggDists dMinDists dMinIndex nodeLen nNodes nt nBlocks|]
+                    
+                    getMins ()
+                    !mins
+                    )
+            }

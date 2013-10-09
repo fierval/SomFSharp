@@ -243,9 +243,17 @@ namespace SomTest
                 new Node(new double [] {255d, 0d, 0d})
             };
 
-            var som = new SomGpuTest(new Tuple<int, int>(6, 6), nodes);
+            var som = new SomGpuTest(new Tuple<int, int>(100, 100), nodes);
             var dist = som.GetDistanceMapSingle();
-            Assert.IsNotNull(dist);
+
+            var distExp = som.LinearGetDistanceMap();
+            for (int i = 0; i < 100; i++)
+            {
+                for (int j = 0; j < 100; j++)
+                {
+                    Assert.AreEqual((decimal)distExp[i, j], (decimal)dist[i, j]);
+                }
+            }
         }
         
         [TestMethod]

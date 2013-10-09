@@ -38,13 +38,36 @@ type SomGpu(dims, nodes : Node seq) =
 
         let mins = pfuncm.Invoke (nodes |> Seq.map (fun n -> n.ToArray()) |> Seq.toList)
         mins
+
+    member this.GetBmuGpuUnified (nodes : Node seq) =
+        let worker = Engine.workers.DefaultWorker
+        use pfuncm = worker.LoadPModule(this.pTestUnifiedBmu)
+
+        let mins = pfuncm.Invoke (nodes |> Seq.map (fun n -> n.ToArray()) |> Seq.toList)
+        mins
                             
-    member this.Train epochs shouldClassify =
+    member this.Train epochs =
         let worker = Engine.workers.DefaultWorker
         use pfuncm = worker.LoadPModule(this.pTrainSom)
 
-        pfuncm.Invoke (nodes |> Seq.map (fun n -> n.ToArray()) |> Seq.toList) epochs shouldClassify
+        pfuncm.Invoke (nodes |> Seq.map (fun n -> n.ToArray()) |> Seq.toList) epochs
         |> this.fromArray
+
+    member this.TrainClassifier epochs =
+        let classes = this.InitClasses()
+
+        for epoch = 0 to epochs - 1 do
+            let mins = this.GetBmuGpuUnified this.InputNodes
+            let nrule = this.ModifyTrainRule (float epoch) epochs
+
+            mins |> Seq.iteri 
+                (fun i bmu ->
+                    let (xBmu, yBmu) = this.toSomCoordinates bmu
+                    let mapNode = this.somMap.[xBmu, yBmu]
+                    if not (String.IsNullOrEmpty(this.InputNodes.[i].Class)) then
+                        let y = if mapNode.Class = this.InputNodes.[i].Class then 1. else -1.                  
+                        this.trainNode this.somMap.[xBmu, yBmu] this.InputNodes.[i] (nrule * y)
+                )
 
     member this.MergeNodes () =
         nodes.SelectMany(fun (n : Node) -> n :> IEnumerable<float>)
@@ -61,7 +84,7 @@ type SomGpu(dims, nodes : Node seq) =
                 (this.somMap |> Array2D.length1) 
                 (this.somMap |> Array2D.length2) 
                 (fun i j -> 
-                    map.[i * this.Height + j]
+                    map.[i * this.Width + j]
                     )
         distMap
 
