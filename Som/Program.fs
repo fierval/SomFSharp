@@ -15,15 +15,14 @@ let toc () =
 
 let mainTainTest argv = 
     let bound = 12000
+    let dim1 = 50
+    let dim2 = 50
     let nodes = ([1..bound] |> Seq.map (fun i -> Node(12))).ToList()
-    let som1 = SomGpu((200, 200), nodes)
+    let som1 = SomGpu((dim1, dim2), nodes)
 
     printfn "training with massive iterations bmu\n"
     som1.Train 5 |> ignore
 
-    0
-
-//[<EntryPoint>]
 let main argv = 
     
     for j = 3 to 3 do
@@ -83,10 +82,13 @@ let mainBmuTest argv =
     printfn "failed: %d" failed
 
 let classifyTest argv = 
-    let bound = 52000
-    let dim1 = 8
-    let dim2 = 8
+    let bound = 12000
+    let dim1 = 50
+    let dim2 = 50
+    let classes = 21
     let nodes = ([1..bound] |> Seq.map (fun i -> Node(12))).ToList()
+    let rnd = Random(int32(DateTime.Now.Ticks))
+    nodes |> Seq.iter (fun n -> n.Class <- rnd.Next(0, classes).ToString())
     let som1 = SomGpu((dim1, dim2), nodes)
     for i = 1 to 3 do
         printfn "\n"
@@ -94,8 +96,13 @@ let classifyTest argv =
         printfn "\tAttempt: %d" i
 
         tic()
-        let minsGpu1 = som1.GetBmuGpu nodes 
-        printfn "\tgpu node-by-node: %10.3f ms" (toc())
+        let minsGpu1 = som1.TrainClassifier 1
+        printfn "\tgpu train classifier: %10.3f ms" (toc())
+
+        tic()
+        let minsGpu1 = som1.TrainClassifierLinear 1
+        printfn "\tlinear train classifier: %10.3f ms" (toc())
+
 
 let findDistance argv =
     let bound = 52000
@@ -127,9 +134,9 @@ let findDistance argv =
 [<EntryPoint>]
 let tests argv =
     //classifyTest argv
-    //mainTainTest argv
+    mainTainTest argv
     //for i = 0 to 10 do
-    mainBmuTest argv
+    //mainBmuTest argv
     //main argv
     //findDistance argv
     0

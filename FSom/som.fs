@@ -207,12 +207,12 @@ type Som(dims : int * int, nodes : Node seq) as this =
         train R0 nrule0 0 epochs isParallel
 
     member this.InitClasses () =
-        let classes = (this.somMap |> Seq.cast<Node> |> Seq.map (fun n -> n.Class)).Distinct().Where(fun c -> not (String.IsNullOrEmpty(c))).ToList()
+        let classes = (nodes |> Seq.map (fun n -> n.Class)).Distinct().Where(fun c -> not (String.IsNullOrEmpty(c))).ToList()
         // randomly assign classes
         let rnd = Random(int32(DateTime.Now.Ticks))
         this.somMap |> Array2D.iter(fun e -> e.Class <- classes.[rnd.Next(0, classes.Count)])
 
-    member this.TrainClassifier epochs =
+    member this.TrainClassifierLinear epochs =
         let totalEpochs = epochs
         this.InitClasses()
 
