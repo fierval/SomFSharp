@@ -192,6 +192,7 @@ namespace SomTest
             var som = new Som(new Tuple<int, int>(200, 200), nodes);
             som.train(2, FSharpOption<bool>.Some(true));
         }
+
         [TestMethod]
         [TestCategory("Som")]
         public void BmuGpuSepParallelCompareTest()
@@ -264,5 +265,30 @@ namespace SomTest
             var som = SomGpu.Read("patents.txt");
             Assert.IsNotNull(som);
         }
+
+        [TestMethod]
+        [TestCategory("Som")]
+        public void BmuGpuShortMapTest()
+        {
+            var bound = 1200;
+            int dim1 = 5;
+            int dim2 = 5;
+            List<Node> nodes = Enumerable.Range(1, bound).Select(r => new Node(12)).ToList();
+            var som = new SomGpuTest(new Tuple<int, int>(dim1, dim2), nodes);
+
+            var rnd = new Random((int)DateTime.Now.Ticks);
+            int ind = rnd.Next(0, bound);
+
+            Tuple<int, int> ij = som.GetBMUParallel(nodes[ind]);
+            var i = ij.Item1;
+            var j = ij.Item2;
+
+            var gpuMins = som.GetBmuGpuShortMapSingle(nodes);
+            var ijG = som.toSomCoordinates(gpuMins[ind]);
+
+            Assert.AreEqual(i, ijG.Item1);
+            Assert.AreEqual(j, ijG.Item2);
+        }
+
     }
 }

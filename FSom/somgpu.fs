@@ -25,13 +25,6 @@ type SomGpu(dims, nodes : Node seq) =
             this.somMap.[x,y] <- Node(arr)) |> ignore
         this.somMap
        
-    member this.GetBmuGpuNodeByNode (nodes : seq<Node>)  =
-        let worker = Engine.workers.DefaultWorker
-        use pfuncm = worker.LoadPModule(this.pTestBmuNodeByNode)
-
-        let res = pfuncm.Invoke ((nodes |> Seq.map (fun n -> n.ToArray()) |> Seq.toList))
-        res
-    
     member this.GetBmuGpu (nodes : Node seq) =
         let worker = Engine.workers.DefaultWorker
         use pfuncm = worker.LoadPModule(this.pTestBmu)
@@ -42,6 +35,13 @@ type SomGpu(dims, nodes : Node seq) =
     member this.GetBmuGpuUnified (nodes : Node seq) =
         let worker = Engine.workers.DefaultWorker
         use pfuncm = worker.LoadPModule(this.pTestUnifiedBmu)
+
+        let mins = pfuncm.Invoke (nodes |> Seq.map (fun n -> n.ToArray()) |> Seq.toList)
+        mins
+
+    member this.GetBmuGpuShortMap (nodes : Node seq) =
+        let worker = Engine.workers.DefaultWorker
+        use pfuncm = worker.LoadPModule(this.pTestDistShortMap)
 
         let mins = pfuncm.Invoke (nodes |> Seq.map (fun n -> n.ToArray()) |> Seq.toList)
         mins

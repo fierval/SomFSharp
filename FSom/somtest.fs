@@ -124,7 +124,7 @@ type SomGpuTest(dim, nodes : Node seq) =
         let minIndex = Array.zeroCreate mapLen
         let finalMinIndex = Array.zeroCreate totalNodes
         
-        for iter = 0 to len / nodeLen / fit - 1 do
+        for iter = 0 to totalNodes - 1 do
             for block = 0 to nBlocks - 1 do
                 let shift = iter * nodeLen
                 let start = block * nt
@@ -165,7 +165,38 @@ type SomGpuTest(dim, nodes : Node seq) =
                 j <- j + stride
         finalMinIndex        
    
+    member this.GetBmuGpuShortMapSingle (nodes : Node seq) =
+        let nodeLen = nodes.First().Count()
+        let nNodes = nodes.Count()
+        let len = nodeLen * nNodes
 
+        let nt =  ((this.DimX * this.DimY) / nodeLen) * nodeLen
+        let mapLen = this.asArray.Length / nodeLen
+        let nBlocks = this.GetBlockDim len nt //split the array of nodes into blocks
+
+        let minDist = Array.create nNodes Double.MaxValue
+        let distances = Array.zeroCreate len
+        let nodes = nodes.SelectMany(fun n -> n :> float seq).ToArray()
+        let minIndex = Array.zeroCreate nNodes
+
+        for iter = 0 to mapLen - 1 do
+            for blockX = 0 to nBlocks - 1 do
+                for threadX = nt - 1 downto 0 do
+                    let xNode = blockX * nt + threadX
+
+                    if xNode < nNodes * nodeLen then
+                        let xMap = (xNode / nodeLen % mapLen + iter) % mapLen * nodeLen + threadX % nodeLen
+                        distances.[xNode] <- (nodes.[xNode] - this.asArray.[xMap]) * (nodes.[xNode] - this.asArray.[xMap])
+
+                        if threadX % nodeLen = 0 then
+                            let mutable dist = 0.
+                            for j = 0 to nodeLen - 1 do
+                                dist <- dist + distances.[xNode + j]
+                            if dist < minDist.[xNode / nodeLen] then
+                                minDist.[xNode / nodeLen] <- dist
+                                minIndex.[xNode / nodeLen] <- xMap / nodeLen
+        minIndex
+        
     member this.GetDistanceMapSingle () =
         let len = this.asArray.Length
         let map = this.asArray

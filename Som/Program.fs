@@ -13,7 +13,7 @@ let toc () =
         stopWatch.Stop()
         stopWatch.Elapsed.TotalMilliseconds
 
-let mainTainTest argv = 
+let mainTrainTest argv = 
     let bound = 12000
     let dim1 = 50
     let dim2 = 50
@@ -39,13 +39,8 @@ let main argv =
             printfn "\tAttempt: %d" i
 
             tic()
-            let minsGpu2 = som1.GetBmuGpu nodes
+            let minsGpu2 = som1.GetBmuGpuUnified nodes
             printfn "\tgpu iterations multiple copies of nodes: %10.3f ms" (toc())
-
-            tic()
-            let minsGpu1 = som1.GetBmuGpuNodeByNode nodes 
-            printfn "\tgpu node-by-node: %10.3f ms" (toc())
-
 
             if j < 2 then
                 tic()
@@ -81,12 +76,12 @@ let mainBmuTest argv =
             failed <- failed + 1
     printfn "failed: %d" failed
 
-let classifyTest argv = 
+let classifyTrainTest argv = 
     let bound = 12000
-    let dim1 = 50
-    let dim2 = 50
+    let dim1 = 80
+    let dim2 = 90
     let classes = 21
-    let nodes = ([1..bound] |> Seq.map (fun i -> Node(12))).ToList()
+    let nodes = ([1..bound] |> Seq.map (fun i -> Node(32))).ToList()
     let rnd = Random(int32(DateTime.Now.Ticks))
     nodes |> Seq.iter (fun n -> n.Class <- rnd.Next(0, classes).ToString())
     let som1 = SomGpu((dim1, dim2), nodes)
@@ -130,13 +125,51 @@ let findDistance argv =
 
         printfn "\tlinear[%d, %d]=%10.5f, gpu[%d, %d]=%10.5f" i j dist.[i,j] i j distGpu.[i,j]
 
+let shortMapTest argv =
+    let bound = 120
+    let dim1 = 5
+    let dim2 = 5
+    let nodes = ([1..bound] |> Seq.map (fun i -> Node(12))).ToList()
+    let som1 = SomGpu((dim1, dim2), nodes)
+    let nodes = ([1..bound] |> Seq.map (fun i -> Node(11))).ToList()
+    let som1 = SomGpu((dim1, dim2), nodes)
+    let bmus = som1.GetBmuGpuUnified nodes
+    let mutable failed = 0
+    for i = 0 to bound - 1 do
+        let bmu = som1.GetBMU nodes.[i]
+        let bmuSom = som1.toSomCoordinates bmus.[i]
+        
+        if bmu = bmuSom then 
+            () //printfn "Success!"
+        else
+            printfn "ind: %d, bmu: %A, bmuSom: %A" i bmu bmuSom
+            failed <- failed + 1
+    printfn "failed: %d" failed
+
+let timeShortMapTest argv =
+    let bound = 12000
+    let dim1 = 90
+    let dim2 = 80
+    let nodes = ([1..bound] |> Seq.map (fun i -> Node(12))).ToList()
+    let som1 = SomGpu((dim1, dim2), nodes)
+    
+    for i = 1 to 3 do
+        printfn "\n"
+        printfn "============================"
+        printfn "\tAttempt: %d" i
+
+        tic()
+        let dist = som1.GetBmuGpuUnified nodes
+        printfn "\tgpu unified: %10.3f ms" (toc())
 
 [<EntryPoint>]
 let tests argv =
-    //classifyTest argv
-    mainTainTest argv
+    classifyTrainTest argv
+   // mainTrainTest argv
     //for i = 0 to 10 do
     //mainBmuTest argv
     //main argv
     //findDistance argv
+    //shortMapTest argv
+    //timeShortMapTest argv
     0
