@@ -7,6 +7,7 @@ using MathNet.Numerics.Distributions;
 using MathNet.Numerics.Random;
 using System.Threading.Tasks;
 using Microsoft.FSharp.Core;
+using System.IO;
 
 namespace SomTest
 {
@@ -260,11 +261,44 @@ namespace SomTest
         [TestMethod]
         [TestCategory("IO")]
         [DeploymentItem("patents.txt")]
-        public void ReadTest()
+        public void ReadFormat0Test()
         {
-            var som = SomGpu.Read("patents.txt");
-            Assert.IsNotNull(som);
+            var som = new SomGpu(new Tuple<int, int>(3, 3), "patents.txt");
+            Assert.AreEqual(true, som.ShouldClassify);
+            Assert.AreEqual(4, som.NodeLen);
+            Assert.AreEqual("1", som.InputNodes[0].Class);
+            Assert.AreEqual("Apple", som.InputNodes[7].Name);
+            Assert.AreEqual("7", som.InputNodes[7].Class);
         }
+
+        [TestMethod]
+        [TestCategory("IO")]
+        [DeploymentItem("patents1.txt")]
+        public void ReadFormat1Test()
+        {
+            var som = new SomGpu(new Tuple<int, int>(3, 3), "patents1.txt");
+            Assert.AreEqual(true, som.ShouldClassify);
+            Assert.AreEqual(4, som.NodeLen);
+            Assert.AreEqual("1", som.InputNodes[0].Class);
+            Assert.AreEqual("Apple", som.InputNodes[7].Name);
+            Assert.AreEqual("7", som.InputNodes[7].Class);
+        }
+
+        [TestMethod]
+        [TestCategory("IO")]
+        [DeploymentItem("patents1.txt")]
+        public void SavingTest()
+        {
+            var som = new Som(new Tuple<int, int>(3, 3), "patents1.txt");
+            som.NormalizeInput(Normalization.Zscore);
+            som.Train(500);
+            if (!Directory.Exists(@"c:\temp"))
+            {
+                Directory.CreateDirectory(@"c:\temp");
+            }
+            som.Save(100, @"c:\temp\res.txt");
+        }
+
 
         [TestMethod]
         [TestCategory("Som")]

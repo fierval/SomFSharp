@@ -59,6 +59,7 @@
   <ItemGroup>
     <Compile Include="normalize.fs" />
     <Compile Include="Utils.fs" />
+    <Compile Include="Arguments.fs" />
     <Compile Include="node.fs" />
     <Compile Include="distance.fs" />
     <Compile Include="som.fs" />

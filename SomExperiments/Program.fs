@@ -15,9 +15,9 @@ let toc () =
 
 let mainTrainTest argv = 
     let bound = 12000
-    let dim1 = 50
-    let dim2 = 50
-    let nodes = ([1..bound] |> Seq.map (fun i -> Node(12))).ToList()
+    let dim1 = 80
+    let dim2 = 90
+    let nodes = ([1..bound] |> Seq.map (fun i -> Node(11))).ToList()
     let som1 = SomGpu((dim1, dim2), nodes)
 
     printfn "training with massive iterations bmu\n"
@@ -164,8 +164,8 @@ let timeShortMapTest argv =
 
 [<EntryPoint>]
 let tests argv =
-    classifyTrainTest argv
-   // mainTrainTest argv
+    //classifyTrainTest argv
+    mainTrainTest argv
     //for i = 0 to 10 do
     //mainBmuTest argv
     //main argv

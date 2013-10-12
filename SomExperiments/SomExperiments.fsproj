@@ -8,7 +8,7 @@
     <ProjectGuid>1847489f-82ba-4baa-9e03-1af93fe63c51</ProjectGuid>
     <OutputType>Exe</OutputType>
     <RootNamespace>Som</RootNamespace>
-    <AssemblyName>Som</AssemblyName>
+    <AssemblyName>SomExp</AssemblyName>
     <TargetFrameworkVersion>v4.5</TargetFrameworkVersion>
     <Name>SomExperiments</Name>
   </PropertyGroup>
@@ -62,7 +62,6 @@
     <Reference Include="System.Numerics" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="Arguments.fs" />
     <Compile Include="Program.fs" />
     <None Include="App.config" />
     <None Include="packages.config" />

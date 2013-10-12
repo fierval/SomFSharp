@@ -17,10 +17,11 @@ type dims =
 
    
 
-type SomGpuTest(dim, nodes : Node seq) =
-    inherit Som(dim, nodes)
+type SomGpuTest =
+    inherit Som
 
-    new (dim : int * int, fileName : string) = SomGpuTest(dim, Som.Read fileName)
+    new (dim, nodes : Node seq) = {inherit Som(dim, nodes)}
+    new (dim : int * int, fileName : string) = {inherit Som(dim, fileName)}
 
     member this.GetBmuGpuSingleNodeByNode (node : Node) =
         let arrNode = node.ToArray()
@@ -74,7 +75,7 @@ type SomGpuTest(dim, nodes : Node seq) =
     member this.SingleDimTrain (node : Node) =
         let blockDim len nThreads = (len + nThreads - 1) / nThreads
 
-        let nodeLen = nodes.First().Count()
+        let nodeLen = this.InputNodes.First().Count()
         let len = this.asArray.Length
 
         let R0 = float((max this.Width this.Height) / 2)
@@ -84,7 +85,7 @@ type SomGpuTest(dim, nodes : Node seq) =
         let nt =  dims(dim, dim, nodeLen)
         let nBlocks = dims(blockDim this.Width nt.x, blockDim this.Height nt.y, 1)
 
-        let nodes = nodes.SelectMany(fun n -> n :> float seq).ToArray()
+        let nodes = this.InputNodes.SelectMany(fun n -> n :> float seq).ToArray()
             
         let bmu = this.GetBmuGpuSingleNodeByNode node
         for blockX = 0 to nBlocks.x - 1 do

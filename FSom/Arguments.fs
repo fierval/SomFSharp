@@ -3,6 +3,7 @@ open System
 open System.Collections.Generic
 open System.Text.RegularExpressions
 
+[<AutoOpen>]
 module Arguments =
 
     // Type for simple argument checking

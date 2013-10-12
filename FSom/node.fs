@@ -19,8 +19,7 @@ type Node(weights : float seq) as this =
     [<DefaultValue>] val mutable private name : string
     [<DefaultValue>] val mutable private classs : string
 
-    static let rndSource = new MersenneTwister()
-    static let gamma = Gamma(2.0, 1.5)
+    static let rndSource = new MersenneTwister(Random.timeSeed())
 
     do
         match weights.Count with
@@ -30,11 +29,7 @@ type Node(weights : float seq) as this =
         this.classs <- String.Empty
         this.name <- String.Empty
 
-    static do
-        gamma.RandomSource <- rndSource
-
-
-    new (len) = Node(gamma.Samples().Take(len))
+    new (len) = Node(seq {for i in [1..len] -> rndSource.NextDouble()})
     new (name, classs, (weights : float seq)) as this = 
         Node(weights)
         then

@@ -17,7 +17,9 @@ type SomGpuBase(dims, nodes : Node seq) =
             stopWatch.Stop()
             stopWatch.Elapsed.TotalMilliseconds
 
-    new (dim : int * int, fileName : string) = SomGpuBase(dim, Som.Read fileName)
+    new (dim : int * int, fileName : string) as this =
+        SomGpuBase(dim, Som.Read fileName)
+        then this.ShouldClassify <- this.InputNodes.First(fun n-> not (String.IsNullOrEmpty(n.Class))).Count() > 0
 
     member this.pTrain = 
         cuda {
@@ -35,7 +37,7 @@ type SomGpuBase(dims, nodes : Node seq) =
                     
                         let distSq = float((bmuX - x) * (bmuX - x) + (bmuY - y) * (bmuY - y))
                         if distSq < rSq then
-                            map.[i] <- map.[i] + nRule * exp(-(10.0 * distSq) / (rSq)) * (node.[threadIdx.z] - map.[i])                                    
+                            map.[i] <- map.[i] + nRule * exp(-(1.0 * distSq) / (rSq)) * (node.[threadIdx.z] - map.[i])                                    
 
                 @> |> defineKernelFuncWithName "training"
 
@@ -97,98 +99,9 @@ type SomGpuBase(dims, nodes : Node seq) =
                 pDistMap.Launch lp nodeLen this.Width this.Height dMap.Ptr dDists.Ptr
                 dDists.ToHost()        
             )
-                
 
         }
     // training
-    member this.pDistNodeByNode = 
-        cuda {
-            let! kernel =
-                <@ fun nodeLen len 
-                    (node : DevicePtr<float>) 
-                    (map :  DevicePtr<float>)
-                    (distances : DevicePtr<float>)
-                    (aggDist : DevicePtr<float>)
-                    (minDist : DevicePtr<float>)
-                    (minIndex : DevicePtr<int>)
-                    ->
-
-                    // index into the original map, assuming
-                    // a node is a single entity
-                    let mapI = blockDim.x * blockIdx.x + threadIdx.x
-                    // actual position of the node component in the map
-                    if mapI < len then                    
-                            
-                        let nodeIndex = threadIdx.x % nodeLen
-
-                        distances.[mapI] <- (map.[mapI] - node.[nodeIndex]) * (map.[mapI] - node.[nodeIndex])
-                        if threadIdx.x % nodeLen = 0 then
-                            __syncthreads()
-
-                            // find the minimum among threads
-                            let mutable sum = 0.
-                            for j = mapI to mapI + nodeLen - 1 do
-                                sum <- sum + distances.[j]
-                            aggDist.[mapI / nodeLen] <- sum
-
-                        // linger a bit longer to find local minimum
-                        if threadIdx.x = 0 then
-                            __syncthreads()
-                            let mutable i = mapI / nodeLen
-                            let mutable j = 0
-
-                            while i < len / nodeLen && j < blockDim.x / nodeLen do
-                                if aggDist.[i] < minDist.[blockIdx.x] || i = mapI / nodeLen then
-                                    minDist.[blockIdx.x] <- aggDist.[i]
-                                    minIndex.[blockIdx.x] <- i
-                                i <- i + 1
-                                j <- j + 1
-                                    
-                    @>  |> defineKernelFuncWithName "bmu"
-                
-
-            let diagnose (stats:KernelExecutionStats) =
-                printfn "gpu timing: %10.3f ms %6.2f%% threads(%d) reg(%d) smem(%d)"
-                    stats.TimeSpan
-                    (stats.Occupancy * 100.0)
-                    stats.LaunchParam.BlockDim.Size
-                    stats.Kernel.NumRegs
-                    stats.Kernel.StaticSharedMemBytes
-
-            return 
-                PFunc(
-                        fun (m:Module) 
-                            (dMap : DeviceMemory<float>) 
-                            (dDist : DeviceMemory<float>) 
-                            (dNodes : DevicePtr<float>) 
-                            (dAggDists : DeviceMemory<float>) 
-                            (dMinDists : DeviceMemory<float>) 
-                            (dMinIndex : DeviceMemory<int>)
-                            nodeLen nNodes (nt : int) 
-                            (nBlocks : int) 
-                                
-                            ->
-
-                let kernel = kernel.Apply m
-                let len = this.asArray.Length
-                let minIndex = ref 0
-                    
-                // Step 1. Find the BMUs
-                let lp = LaunchParam(nBlocks, nt) //|> Engine.setDiagnoser diagnose
-                    
-                kernel.Launch lp nodeLen len dNodes dMap.Ptr dDist.Ptr dAggDists.Ptr dMinDists.Ptr dMinIndex.Ptr
-
-                let minIndicies = dMinIndex.ToHost()
-                let minDists = dMinDists.ToHost()
-
-                let minVal = ref Double.MaxValue
-                let split = len / nodeLen
-
-                minDists |>Array.iteri (fun j e -> if e < !minVal then minVal := e; minIndex := minIndicies.[j])
-                !minIndex
-                )
-        }
-
     member this.pDist = 
         cuda {
             let! kernel =
@@ -263,11 +176,10 @@ type SomGpuBase(dims, nodes : Node seq) =
                 let kernel = kernel.Apply m
                 let len = this.asArray.Length
                 let mapLen = len / nodeLen
-                let fit = len / nodeLen / nNodes
 
                 let lp = LaunchParam(nBlocks, nt) //|> Engine.setDiagnoser diagnose
                     
-                for iter = 0 to len / nodeLen / fit - 1 do
+                for iter = 0 to nNodes - 1 do
                     kernel.Launch lp len nodeLen nNodes iter dNodes.Ptr dMap.Ptr dTemp.Ptr dMinDists.Ptr dIndex.Ptr
 
                 let finalMinIndex = Array.zeroCreate nNodes
@@ -347,32 +259,29 @@ type SomGpuBase(dims, nodes : Node seq) =
     member this.pTrainSom = 
         cuda {
             let! pdist = this.pDist
-            let! pdistNodeByNode = this.pDistNodeByNode
+            let! pdistShortMap = this.pDistShortMap
             let! ptrain = this.pTrain
                 
             return PFunc(fun (m: Module) (nodes : float [] list) epochs ->
                 let pdist = pdist.Apply m
                 let ptrain = ptrain.Apply m
-                let pdistNodeByNode = pdistNodeByNode.Apply m
+                let pdistShortMap = pdistShortMap.Apply m
 
                 let nNodes = nodes.Length
                 let nodeLen = nodes.[0].Length
-                let len = this.asArray.Length
+                let mapLen = this.asArray.Length / nodeLen
+
+                let len = if nNodes <= mapLen then this.asArray.Length else nNodes * nodeLen
 
                 let nt =  ((this.DimX * this.DimY) / nodeLen) * nodeLen
-                let nodeLen = nodes.[0].Length
-                let mapLen = len / nodeLen
-                let fit = len / nodeLen / nNodes
                 let nBlocks = this.GetBlockDim len nt //split the array of nodes into blocks
 
                 use dMap = m.Worker.Malloc(this.asArray)
-                use dMinDists = if nNodes <= mapLen then m.Worker.Malloc<float>(mapLen) else m.Worker.Malloc<float>(nBlocks)
-                use dIndex = m.Worker.Malloc<int>(mapLen) 
+                let minDist = Array.create nNodes Double.MaxValue
+                use dMinDists = if nNodes <= mapLen then m.Worker.Malloc<float>(mapLen) else m.Worker.Malloc(minDist)
+                use dMinIndex = m.Worker.Malloc<int>(if nNodes <= mapLen then mapLen else nNodes) 
                 use dTemp = m.Worker.Malloc<float>(len)
                 use dNodes = m.Worker.Malloc(nodes.SelectMany(fun n -> n :> float seq).ToArray())
-
-                use dAggDists = m.Worker.Malloc<float>(len / nodeLen)
-                use dMinIndex = m.Worker.Malloc<int>(nBlocks)
 
                 // training constants                    
                 let R0 = float(this.Width / 2)
@@ -390,18 +299,16 @@ type SomGpuBase(dims, nodes : Node seq) =
                 let mins = ref (Array.zeroCreate nNodes)
 
                 let getMins () =
-                    mins :=
-                        if nNodes <= mapLen  then
-                            pdist dMap dNodes dTemp dMinDists dIndex nodeLen nNodes nt nBlocks
-                        else
-                            [|for i = 0 to nNodes - 1 do
-                                yield pdistNodeByNode dMap dTemp (dNodes.Ptr + i * nodeLen) dAggDists dMinDists dMinIndex nodeLen nNodes nt nBlocks|]
+                    if nNodes <= mapLen  then
+                        pdist dMap dNodes dTemp dMinDists dMinIndex nodeLen nNodes nt nBlocks
+                    else
+                        pdistShortMap dMap dNodes dTemp dMinDists dMinIndex nodeLen nNodes nt nBlocks
 
                 for epoch = 0 to epochs - 1 do 
                     // Step 1. Find the BMUs
                     tic ()
 
-                    getMins()
+                    getMins() |> ignore
                     printfn "found all minimums for the epoch: %10.3f ms" (toc())
 
                     let r = modifyR (float epoch)

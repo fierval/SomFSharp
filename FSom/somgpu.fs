@@ -13,7 +13,20 @@ open System.IO
 
 type SomGpu(dims, nodes : Node seq) =
     inherit SomGpuBase(dims, nodes) 
-    new (dim : int * int, fileName : string) = SomGpu(dim, Som.Read fileName)
+    let stopWatch = Stopwatch()
+
+    let tic () = 
+        stopWatch.Restart()
+
+    let toc () = 
+            stopWatch.Stop()
+            stopWatch.Elapsed.TotalMilliseconds
+
+    new (dim : int * int, fileName : string) as this = 
+        SomGpu(dim, Som.Read fileName)  
+        then this.ShouldClassify <- this.InputNodes.First(fun n-> not (String.IsNullOrEmpty(n.Class))).Count() > 0
+
+
 
     member this.fromArray (somArray : float []) =
         let nodeLen = this.somMap.[0, 0].Count()
@@ -46,17 +59,18 @@ type SomGpu(dims, nodes : Node seq) =
         let mins = pfuncm.Invoke (nodes |> Seq.map (fun n -> n.ToArray()) |> Seq.toList)
         mins
                             
-    member this.Train epochs =
+    override this.Train epochs =
         let worker = Engine.workers.DefaultWorker
         use pfuncm = worker.LoadPModule(this.pTrainSom)
 
         pfuncm.Invoke (nodes |> Seq.map (fun n -> n.ToArray()) |> Seq.toList) epochs
         |> this.fromArray
 
-    member this.TrainClassifier epochs =
+    override this.TrainClassifier epochs =
         let classes = this.InitClasses()
 
         for epoch = 0 to epochs - 1 do
+            tic()
             let mins = this.GetBmuGpuUnified this.InputNodes
             let nrule = this.ModifyTrainRule (float epoch) epochs
 
@@ -68,11 +82,12 @@ type SomGpu(dims, nodes : Node seq) =
                         let y = if mapNode.Class = this.InputNodes.[i].Class then 1. else -1.                  
                         this.trainNode this.somMap.[xBmu, yBmu] this.InputNodes.[i] (nrule * y)
                 )
+            printfn "Classifier train iteration, epoch %d, %10f.3ms" epoch (toc())
 
     member this.MergeNodes () =
         nodes.SelectMany(fun (n : Node) -> n :> IEnumerable<float>)
 
-    member this.DistanceMap () =
+    override this.DistanceMap () =
         let worker = Engine.workers.DefaultWorker
         use pfuncm = worker.LoadPModule(this.pDistanceMap)
 
@@ -87,46 +102,5 @@ type SomGpu(dims, nodes : Node seq) =
                     map.[i * this.Width + j]
                     )
         distMap
-
-    member this.Save fileName =
-        if String.IsNullOrWhiteSpace fileName then failwith "File name must be specified"
-
-        if File.Exists fileName then File.Delete fileName
-
-        let output = List<string>()
-
-        let buildStringSeq (arr : string [,]) =
-            seq {
-                for i = 0 to this.Height - 1 do 
-                    yield (arr.[i..i, 0..] |> Seq.cast<string> |> Seq.fold (fun st e -> st + " " + e) String.Empty)
-            }
-            
-        // separator between chunks of output    
-        let separate () = output.Add(String.Empty)
-
-        // build the 2D array of distance map
-        let distMap = this.DistanceMap()
-        let strDistMap = distMap |> Array2D.map(fun e -> e.ToString()) |> buildStringSeq
-        output.AddRange strDistMap
-
-        separate()
-
-        let classes = this.somMap |> Array2D.map (fun node -> node.Class) |> buildStringSeq
-        output.AddRange classes
-            
-        separate()
-
-        // 2D weights
-        let weights = 
-            Array2D.init this.Height (this.Width * this.NodeLen )
-                (fun i j ->
-                    this.somMap.[i, j / this.NodeLen].[ j % this.NodeLen].ToString()
-                ) |> buildStringSeq
-
-        output.AddRange weights
-
-        // write it all out
-        File.WriteAllLines(fileName, output)
-            
 
 

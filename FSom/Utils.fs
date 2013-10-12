@@ -58,5 +58,5 @@ module Utils =
         let entries = read fileName
         let entriesNormalized = (read fileName).Select(fun e -> trd e ).ToList()
         normalize entriesNormalized norm
-        entriesNormalized |> Seq.map2 (fun (x, y, z) e2 -> (x, y, e2)) entries
+        |> Seq.map2 (fun (x, y, z) e2 -> (x, y, e2)) entries
 

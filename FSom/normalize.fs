@@ -51,5 +51,4 @@ module normalize =
         for node in nodes do
             for i = 0 to node.Count - 1 do
                 node.[i] <- (node.[i] + fst addMul.[i]) * snd addMul.[i]
-        
-        
+        nodes
