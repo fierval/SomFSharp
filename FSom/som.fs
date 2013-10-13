@@ -99,7 +99,9 @@ type Som(dims : int * int, nodes : Node seq) as this =
                         node.Class <- !classs  
                         nodes.Add node
                 | n when n = 1 ->
-                    let node = Node(entries |> Seq.skip(2) |> Seq.map(fun e -> Double.Parse(e)))    
+                    let res = ref 0.
+                    let haveClasses = not (Double.TryParse(entries.[0], res))
+                    let node = Node(entries |> Seq.skip(if haveClasses then 2 else 0) |> Seq.map(fun e -> Double.Parse(e)))    
                     if node.Count() <> !nodeLen && !nodeLen > 0 then failwith ("wrong length found, line " + i.ToString())
                     if !nodeLen = 0 then
                         nodeLen := node.Count()
@@ -313,7 +315,7 @@ type Som(dims : int * int, nodes : Node seq) as this =
             seq {
                 for i = 0 to this.Height - 1 do 
                     yield String (arr.[i..i, 0..] 
-                        |> Seq.cast<string> |> Seq.fold (fun st e -> st + " " + e) String.Empty |> Seq.skip 1 |> Seq.toArray)
+                        |> Seq.cast<string> |> Seq.fold (fun st e -> st + "\t" + e) String.Empty |> Seq.skip 1 |> Seq.toArray)
             }
 
         let saveWeights (arr : Node [,]) = 
