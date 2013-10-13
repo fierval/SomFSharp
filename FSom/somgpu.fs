@@ -26,8 +26,6 @@ type SomGpu(dims, nodes : Node seq) =
         SomGpu(dim, Som.Read fileName)  
         then this.ShouldClassify <- this.InputNodes.First(fun n-> not (String.IsNullOrEmpty(n.Class))).Count() > 0
 
-
-
     member this.fromArray (somArray : float []) =
         let nodeLen = this.somMap.[0, 0].Count()
         let arr = Array.zeroCreate nodeLen

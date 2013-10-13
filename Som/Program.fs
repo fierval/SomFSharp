@@ -40,10 +40,12 @@ let run (args : Dictionary<string, string>) =
     match args with
     | Train (normalize, height, width, epochs, fileName, outFile) ->
         let som = SomGpu((height, width), fileName)  
+        //let som = SomGpuTest((height, width), fileName)  
         if normalize then
             som.NormalizeInput(Normalization.Zscore)
-        printfn "Normalized som using z-score normalization"
-        som.Train(epochs) |> ignore
+            printfn "Normalized som using z-score normalization"
+        som.Train epochs |> ignore
+        //som.SingleDimTrain som.InputNodes.[0]
         printfn "Finished training..."
         if som.ShouldClassify then
             printfn "Classifier will be trained..."

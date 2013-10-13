@@ -18,13 +18,15 @@ open System.IO
 type Som(dims : int * int, nodes : Node seq) as this = 
     
     [<DefaultValue>] val mutable somMap : Node [,]
+    [<DefaultValue>] val mutable asArray : float []
+
     let mutable metric = Metric.Euclidian
     let mutable shouldClassify = false
 
     let mutable nodes = 
         match nodes with
         | null -> failwith "null array of nodes"
-        | nodes -> nodes
+        | nodes -> nodes.ToList()
 
     let dims = 
         match dims with
@@ -55,10 +57,17 @@ type Som(dims : int * int, nodes : Node seq) as this =
     let getBlockDim len nThreads = (len + nThreads - 1) / nThreads
 
     let dimX, dimY = 32, 32
-        
+
     do
         this.somMap <- initialize()
-        printfn "Initialized map: %d x %d, %d dimensions, %d nodes" height width (this.NodeLen) (nodes.Count())
+        printfn "Initialized map: %d x %d, %d dimensions, %d nodes" height width (this.NodeLen) (nodes.Count)
+        this.asArray <-
+            let x, y = width, height
+            let z = this.somMap.[0,0].Count()
+            let arr : float [] ref = ref (Array.zeroCreate (x * y * z))
+            this.somMap |> Array2D.iteri (fun i j e -> e |> Seq.iteri (fun k el -> (!arr).[i * x * z + z * j + k] <- el))
+            !arr        
+        
 
     static member Read fileName =
         if not (File.Exists fileName) then failwith ("file does not exist: " + fileName)
@@ -124,13 +133,6 @@ type Som(dims : int * int, nodes : Node seq) as this =
         let y = i - x * this.Width
         x, y
 
-    member this.asArray = 
-        let x, y = width, height
-        let z = this.somMap.[0,0].Count()
-        let arr : float [] ref = ref (Array.zeroCreate (x * y * z))
-        this.somMap |> Array2D.iteri (fun i j e -> e |> Seq.iteri (fun k el -> (!arr).[i * x * z + z * j + k] <- el))
-        !arr        
-    
     member this.ShouldClassify 
         with get() = shouldClassify
         and set value = shouldClassify <- value
@@ -148,17 +150,17 @@ type Som(dims : int * int, nodes : Node seq) as this =
     
     member this.NormalizeInput (norm : Normalization) =
         nodes <- 
-            normalize(this.InputNodes.Select(fun (n : Node) -> n.ToList() :> IList<float>).ToList())  norm
+            (normalize(this.InputNodes.Select(fun (n : Node) -> n.ToList() :> IList<float>).ToList())  norm
             |> Seq.map2 (
                 fun (old : Node) (n : IList<float>) 
                     -> 
                         let node = Node(n)
                         node.Class <- old.Class
                         node.Name <- old.Name
-                        node) nodes
-            |> Seq.toList
+                        node) nodes).ToList()
+            
 
-    member this.InputNodes : System.Collections.Generic.List<Node> = nodes.ToList()
+    member this.InputNodes : System.Collections.Generic.List<Node> = nodes
     member this.Item
         with get(i1, i2) = this.somMap.[i1, i2]
 

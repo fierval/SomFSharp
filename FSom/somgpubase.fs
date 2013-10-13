@@ -29,19 +29,19 @@ type SomGpuBase(dims, nodes : Node seq) =
                     (map :  DevicePtr<float>) 
                     ->
 
-                    let x = blockDim.x * blockIdx.x + threadIdx.x 
-                    let y = blockDim.y * blockIdx.y + threadIdx.y
-                    
-                    if x < height && y < width then    
-                        let i = x * width * nodeLen + y * nodeLen + threadIdx.z
-                    
+                    let i = blockDim.x * blockIdx.x + threadIdx.x
+                    if i < len then    
+                        let x = i / width / nodeLen
+                        let y = (i - x * width * nodeLen) / nodeLen
+                        let z = i % nodeLen
+
                         let distSq = float((bmuX - x) * (bmuX - x) + (bmuY - y) * (bmuY - y))
                         if distSq < rSq then
-                            map.[i] <- map.[i] + nRule * exp(-(1.0 * distSq) / (rSq)) * (node.[threadIdx.z] - map.[i])                                    
+                            map.[i] <- map.[i] + nRule * exp(-(1.0 * distSq) / (rSq)) * (node.[z] - map.[i])                                    
 
                 @> |> defineKernelFuncWithName "training"
 
-            return PFunc(fun (m:Module) (epoch : int) epochs r nrule (nt : dim3) (nBlocks : dim3) (mins : int []) nodeLen len (dNodes : DevicePtr<float>) (dMap : DevicePtr<float>) ->   
+            return PFunc(fun (m:Module) (epoch : int) epochs r nrule (nt : int) nBlocks (mins : int []) nodeLen len (dNodes : DevicePtr<float>) (dMap : DevicePtr<float>) ->   
                 let kernelTrain = kernelTrain.Apply m
                 let lp = LaunchParam(nBlocks, nt)
                 for i = 0 to mins.Length - 1 do
@@ -261,11 +261,12 @@ type SomGpuBase(dims, nodes : Node seq) =
         cuda {
             let! pdist = this.pDist
             let! pdistShortMap = this.pDistShortMap
-            let! ptrain = this.pTrain
+            let! pTrain = this.pTrain
+
                 
             return PFunc(fun (m: Module) (nodes : float [] list) epochs ->
                 let pdist = pdist.Apply m
-                let ptrain = ptrain.Apply m
+                let ptrain = pTrain.Apply m
                 let pdistShortMap = pdistShortMap.Apply m
 
                 let nNodes = nodes.Length
@@ -293,17 +294,15 @@ type SomGpuBase(dims, nodes : Node seq) =
                 let modifyTrainRule x =
                         nrule0 * exp(-10.0 * (x * x) / float(epochs * epochs))
 
-                //let dim = min this.Width (int(sqrt(float (this.DimX * this.DimY / nodeLen))))
-                let ntTrain =  dim3(min this.DimX this.Height, min this.DimY this.Width, nodeLen)
-
-                let nBlocksTrain = dim3(this.GetBlockDim this.Height ntTrain.x, this.GetBlockDim this.Width ntTrain.y, 1)
-
+                // training is in single dimension because alea.cuBase doesn't
+                // handle multiple dimensions.
+                let mapFullLen = this.asArray.Length
+                let nBlocksTrain = this.GetBlockDim mapFullLen nt
                 let getMins () =
                     if nNodes <= mapLen  then
                         pdist dMap dNodes dTemp dMinDists dMinIndex nodeLen nNodes nt nBlocks
                     else
                         pdistShortMap dMap dNodes dTemp dMinDists dMinIndex nodeLen nNodes nt nBlocks
-
                 for epoch = 0 to epochs - 1 do 
                     // Step 1. Find the BMUs
                     tic ()
@@ -317,9 +316,7 @@ type SomGpuBase(dims, nodes : Node seq) =
                     tic()
 
                     //Step 2. Training.
-                    ptrain epoch epochs r nrule ntTrain nBlocksTrain mins nodeLen len  dNodes.Ptr dMap.Ptr
-//                    let map = dMap.ToHost()
-//                    map |> ignore
+                    ptrain epoch epochs r nrule nt nBlocksTrain mins nodeLen mapFullLen dNodes.Ptr dMap.Ptr
 
                 dMap.ToHost()
             )    
@@ -456,7 +453,8 @@ type SomGpuBase(dims, nodes : Node seq) =
                                 pdistShortMap dMap dNodes dTemp dMinDists dMinIndex nodeLen nNodes nt nBlocks
 
                         let nrule = this.ModifyTrainRule (float epoch) epochs
-
+                        printfn "Found all minimums, epoch %d, %10.3fms" epoch (toc())
+                        tic()
                         mins |> Seq.iteri 
                             (fun i bmu ->
                                 let (xBmu, yBmu) = this.toSomCoordinates bmu

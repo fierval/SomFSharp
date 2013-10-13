@@ -82,9 +82,9 @@ type SomGpuTest =
         let nrule0 = 0.9
 
         let dim = min this.Width (int(sqrt(float (this.DimX * this.DimY / nodeLen))))
-        let nt =  dims(dim, dim, nodeLen)
-        let nBlocks = dims(blockDim this.Width nt.x, blockDim this.Height nt.y, 1)
-
+        let nt =  dims(min this.DimX this.Height, min this.DimY this.Width, nodeLen)
+        let nBlocks = dims(this.GetBlockDim this.Height nt.x, this.GetBlockDim this.Width nt.y, 1)
+        let map = this.asArray
         let nodes = this.InputNodes.SelectMany(fun n -> n :> float seq).ToArray()
             
         let bmu = this.GetBmuGpuSingleNodeByNode node
@@ -103,7 +103,7 @@ type SomGpuTest =
                             if i < len then
                                 let distSq = float((bmuX - x) * (bmuX - x) + (bmuY - y) * (bmuY - y))
                                 if distSq < rSq then 
-                                    this.asArray.[i] <- this.asArray.[i] + nrule0 * exp(-(1.0 * distSq) / (rSq)) * (node.[threadZ] - this.asArray.[i])
+                                    map.[i] <- map.[i] + nrule0 * exp(-(1.0 * distSq) / (rSq)) * (node.[threadZ] - map.[i])
 
 
     member this.GetBmuGpuSingle (nodes : Node seq) =
