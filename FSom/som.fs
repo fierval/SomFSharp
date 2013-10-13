@@ -254,7 +254,8 @@ type Som(dims : int * int, nodes : Node seq) as this =
 
     member this.InitClasses () =
         let classes = (nodes |> Seq.map (fun n -> n.Class)).Distinct().Where(fun c -> not (String.IsNullOrEmpty(c))).ToList()
-        this.somMap |> Seq.cast<Node> |> Seq.iter2 (fun c e -> e.Class <- c) classes
+        //this.somMap |> Seq.cast<Node> |> Seq.iter2 (fun c e -> e.Class <- c) classes
+        this.somMap |> Array2D.iteri(fun i j e -> e.Class <- classes.[(i * this.Width + j) % classes.Count])
 
     abstract member TrainClassifier : int -> unit
     default this.TrainClassifier epochs = this.TrainClassifierLinear epochs
@@ -271,7 +272,7 @@ type Som(dims : int * int, nodes : Node seq) as this =
                     let bmu = this.somMap.[xBmu, yBmu]
                     
                     if not (String.IsNullOrEmpty(bmu.Class)) then
-                        let y = if bmu.Class = node.Class then rule else -1. * rule                
+                        let y = if bmu.Class = node.Class then 1. else -1.               
                         this.trainNode this.somMap.[xBmu, yBmu] node (rule * y)
 
                 let x = float(epoch + 1)

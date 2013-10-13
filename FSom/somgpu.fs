@@ -63,7 +63,7 @@ type SomGpu(dims, nodes : Node seq) =
         let worker = Engine.workers.DefaultWorker
         use pfuncm = worker.LoadPModule(this.pTrainSom)
 
-        pfuncm.Invoke (nodes |> Seq.map (fun n -> n.ToArray()) |> Seq.toList) epochs
+        pfuncm.Invoke (this.InputNodes |> Seq.map (fun n -> n.ToArray()) |> Seq.toList) epochs
         |> this.fromArray
 
     override this.TrainClassifier epochs =
@@ -82,7 +82,7 @@ type SomGpu(dims, nodes : Node seq) =
                         let y = if mapNode.Class = this.InputNodes.[i].Class then 1. else -1.                  
                         this.trainNode this.somMap.[xBmu, yBmu] this.InputNodes.[i] (nrule * y)
                 )
-            printfn "Classifier train iteration, epoch %d, %10f.3ms" epoch (toc())
+            printfn "Classifier train iteration, epoch %d, %10.3fms" epoch (toc())
 
     member this.MergeNodes () =
         nodes.SelectMany(fun (n : Node) -> n :> IEnumerable<float>)
