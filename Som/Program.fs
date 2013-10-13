@@ -35,7 +35,7 @@ let (|Normalize|_|) (args : Dictionary<string, string>) =
 
 let run (args : Dictionary<string, string>) =
     let keys = args.Keys
-    if (keys.Contains "t") && (keys.Contains "r") then failwith "need to specify either \"t\" or \"r\" as an action" 
+    if (keys.Contains "t") && (keys.Contains "r") then failwith "both \"t\" and \"r\" are not allowed." 
 
     match args with
     | Train (normalize, height, width, epochs, fileName, outFile) ->
@@ -60,7 +60,7 @@ let run (args : Dictionary<string, string>) =
             out <- node |> Seq.fold(fun st v -> st + "\t" + v.ToString()) out 
             output.Add(out)
         File.WriteAllLines(outFile, output)
-    |_ -> failwith "need to specify either \"t\" or \"r\" as an action" 
+    |_ -> failwith "need to specify either \"t\" or \"r\" or \"n\" as the action" 
     0
 
 [<EntryPoint>]

@@ -416,3 +416,56 @@ type SomGpuBase(dims, nodes : Node seq) =
                     )
             }
         
+        member this.pTrainClassifier =
+            cuda {
+                let! pdist = this.pDist
+                let! pdistShortMap = this.pDistShortMap
+
+                return PFunc(
+                        fun (m : Module) epochs ->
+                    let pdist = pdist.Apply m
+                    let pdistShortMap = pdistShortMap.Apply m
+                    let nodes = this.InputNodes
+
+                    let nNodes = nodes.Count
+                    let nodeLen = nodes.[0].Count()
+
+                    let mapLen = this.asArray.Length / nodeLen
+
+                    let len = if nNodes <= mapLen then this.asArray.Length else nNodes * nodeLen
+
+                    let nt =  ((this.DimX * this.DimY) / nodeLen) * nodeLen
+                    let nBlocks = this.GetBlockDim len nt //split the array of nodes into blocks
+
+                    use dMap = m.Worker.Malloc(this.asArray)
+                    let minDist = Array.create nNodes Double.MaxValue
+                    use dMinDists = if nNodes <= mapLen then m.Worker.Malloc<float>(mapLen) else m.Worker.Malloc(minDist)
+                    use dMinIndex = m.Worker.Malloc<int>(if nNodes <= mapLen then mapLen else nNodes) 
+                    use dTemp = m.Worker.Malloc<float>(len)
+                    use dNodes = m.Worker.Malloc(nodes.SelectMany(fun n -> n :> float seq).ToArray())
+                    
+                    this.InitClasses()
+
+                    for epoch = 0 to epochs - 1 do
+                        tic()
+
+                        let mins = 
+                            if nNodes <= mapLen  then
+                                pdist dMap dNodes dTemp dMinDists dMinIndex nodeLen nNodes nt nBlocks
+                            else
+                                pdistShortMap dMap dNodes dTemp dMinDists dMinIndex nodeLen nNodes nt nBlocks
+
+                        let nrule = this.ModifyTrainRule (float epoch) epochs
+
+                        mins |> Seq.iteri 
+                            (fun i bmu ->
+                                let (xBmu, yBmu) = this.toSomCoordinates bmu
+                                let mapNode = this.somMap.[xBmu, yBmu]
+                                if not (String.IsNullOrEmpty(this.InputNodes.[i].Class)) then
+                                    let y = if mapNode.Class = this.InputNodes.[i].Class then 1. else -1.                  
+                                    this.trainNode this.somMap.[xBmu, yBmu] this.InputNodes.[i] (nrule * y)
+                            )
+                        printfn "Classifier train iteration, epoch %d, %10.3fms" epoch (toc())
+
+                    )
+            }

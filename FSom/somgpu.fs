@@ -67,22 +67,10 @@ type SomGpu(dims, nodes : Node seq) =
         |> this.fromArray
 
     override this.TrainClassifier epochs =
-        let classes = this.InitClasses()
-
-        for epoch = 0 to epochs - 1 do
-            tic()
-            let mins = this.GetBmuGpuUnified this.InputNodes
-            let nrule = this.ModifyTrainRule (float epoch) epochs
-
-            mins |> Seq.iteri 
-                (fun i bmu ->
-                    let (xBmu, yBmu) = this.toSomCoordinates bmu
-                    let mapNode = this.somMap.[xBmu, yBmu]
-                    if not (String.IsNullOrEmpty(this.InputNodes.[i].Class)) then
-                        let y = if mapNode.Class = this.InputNodes.[i].Class then 1. else -1.                  
-                        this.trainNode this.somMap.[xBmu, yBmu] this.InputNodes.[i] (nrule * y)
-                )
-            printfn "Classifier train iteration, epoch %d, %10.3fms" epoch (toc())
+        let worker = Engine.workers.DefaultWorker
+        use pfuncm = worker.LoadPModule(this.pTrainClassifier)
+    
+        pfuncm.Invoke epochs
 
     member this.MergeNodes () =
         nodes.SelectMany(fun (n : Node) -> n :> IEnumerable<float>)
