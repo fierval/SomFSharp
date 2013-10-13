@@ -7,6 +7,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SomTest", "..\SomTest\SomTe
 EndProject
 Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "SomExperiments", "..\SomExperiments\SomExperiments.fsproj", "{1847489F-82BA-4BAA-9E03-1AF93FE63C51}"
 EndProject
+Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Som", "..\Som\Som.fsproj", "{2F874064-2CB1-4B64-80AD-690596F96030}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -52,6 +54,16 @@ Global
 		{1847489F-82BA-4BAA-9E03-1AF93FE63C51}.Release|Mixed Platforms.Build.0 = Release|Any CPU
 		{1847489F-82BA-4BAA-9E03-1AF93FE63C51}.Release|x64.ActiveCfg = Release|x64
 		{1847489F-82BA-4BAA-9E03-1AF93FE63C51}.Release|x64.Build.0 = Release|x64
+		{2F874064-2CB1-4B64-80AD-690596F96030}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{2F874064-2CB1-4B64-80AD-690596F96030}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{2F874064-2CB1-4B64-80AD-690596F96030}.Debug|Mixed Platforms.ActiveCfg = Debug|Any CPU
+		{2F874064-2CB1-4B64-80AD-690596F96030}.Debug|Mixed Platforms.Build.0 = Debug|Any CPU
+		{2F874064-2CB1-4B64-80AD-690596F96030}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{2F874064-2CB1-4B64-80AD-690596F96030}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{2F874064-2CB1-4B64-80AD-690596F96030}.Release|Any CPU.Build.0 = Release|Any CPU
+		{2F874064-2CB1-4B64-80AD-690596F96030}.Release|Mixed Platforms.ActiveCfg = Release|Any CPU
+		{2F874064-2CB1-4B64-80AD-690596F96030}.Release|Mixed Platforms.Build.0 = Release|Any CPU
+		{2F874064-2CB1-4B64-80AD-690596F96030}.Release|x64.ActiveCfg = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

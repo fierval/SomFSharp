@@ -70,7 +70,7 @@ type SomGpuBase(dims, nodes : Node seq) =
 
                         for x1 = x - 1 to x + 1 do
                             for y1 = y - 1 to y + 1 do
-                                if x1 >= 0 && y1 >= 0 && x1 < width && y1 < height && (x1 <> x || y1 <> y) then
+                                if x1 >= 0 && y1 >= 0 && x1 < height && y1 < width && (x1 <> x || y1 <> y) then
                                     let j = x1 * width * nodeLen + y1 * nodeLen
                                     n <- n + 1
                                     let mutable thisDist = 0.
@@ -178,8 +178,9 @@ type SomGpuBase(dims, nodes : Node seq) =
                 let mapLen = len / nodeLen
 
                 let lp = LaunchParam(nBlocks, nt) //|> Engine.setDiagnoser diagnose
-                    
-                for iter = 0 to nNodes - 1 do
+
+                let fit = len / nodeLen / nNodes                    
+                for iter = 0 to len / nodeLen / fit - 1 do
                     kernel.Launch lp len nodeLen nNodes iter dNodes.Ptr dMap.Ptr dTemp.Ptr dMinDists.Ptr dIndex.Ptr
 
                 let finalMinIndex = Array.zeroCreate nNodes
@@ -292,11 +293,10 @@ type SomGpuBase(dims, nodes : Node seq) =
                 let modifyTrainRule x =
                         nrule0 * exp(-10.0 * (x * x) / float(epochs * epochs))
 
-                let dim = min this.Width (int(sqrt(float (this.DimX * this.DimY / nodeLen))))
-                let ntTrain =  dim3(dim, dim, nodeLen)
+                //let dim = min this.Width (int(sqrt(float (this.DimX * this.DimY / nodeLen))))
+                let ntTrain =  dim3(min this.DimX this.Height, min this.DimY this.Width, nodeLen)
 
-                let nBlocksTrain = dim3(this.GetBlockDim this.Width ntTrain.x, this.GetBlockDim this.Height ntTrain.y, 1)
-                let mins = ref (Array.zeroCreate nNodes)
+                let nBlocksTrain = dim3(this.GetBlockDim this.Height ntTrain.x, this.GetBlockDim this.Width ntTrain.y, 1)
 
                 let getMins () =
                     if nNodes <= mapLen  then
@@ -308,7 +308,7 @@ type SomGpuBase(dims, nodes : Node seq) =
                     // Step 1. Find the BMUs
                     tic ()
 
-                    getMins() |> ignore
+                    let mins = getMins()
                     printfn "found all minimums for the epoch: %10.3f ms" (toc())
 
                     let r = modifyR (float epoch)
@@ -317,7 +317,9 @@ type SomGpuBase(dims, nodes : Node seq) =
                     tic()
 
                     //Step 2. Training.
-                    ptrain epoch epochs r nrule ntTrain nBlocksTrain !mins nodeLen len  dNodes.Ptr dMap.Ptr
+                    ptrain epoch epochs r nrule ntTrain nBlocksTrain mins nodeLen len  dNodes.Ptr dMap.Ptr
+//                    let map = dMap.ToHost()
+//                    map |> ignore
 
                 dMap.ToHost()
             )    

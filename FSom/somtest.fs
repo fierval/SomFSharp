@@ -125,7 +125,7 @@ type SomGpuTest =
         let minIndex = Array.zeroCreate mapLen
         let finalMinIndex = Array.zeroCreate totalNodes
         
-        for iter = 0 to totalNodes - 1 do
+        for iter = 0 to len / nodeLen / fit - 1 do
             for block = 0 to nBlocks - 1 do
                 let shift = iter * nodeLen
                 let start = block * nt

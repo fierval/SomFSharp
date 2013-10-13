@@ -236,22 +236,17 @@ namespace SomTest
 
         [TestMethod]
         [TestCategory("Som")]
+        [DeploymentItem("patents.txt")]
         public void DistMapSingleTest()
         {
-            List<Node> nodes = new List<Node>()
-            {
-                new Node(new double [] {0d, 0d, 255d}),
-                new Node(new double [] {0d, 255d, 0d}),
-                new Node(new double [] {255d, 0d, 0d})
-            };
 
-            var som = new SomGpuTest(new Tuple<int, int>(100, 100), nodes);
+            var som = new SomGpuTest(new Tuple<int, int>(10, 20), "patents.txt");
             var dist = som.GetDistanceMapSingle();
 
             var distExp = som.LinearGetDistanceMap();
-            for (int i = 0; i < 100; i++)
+            for (int i = 0; i < 10; i++)
             {
-                for (int j = 0; j < 100; j++)
+                for (int j = 0; j < 20; j++)
                 {
                     Assert.AreEqual((decimal)distExp[i, j], (decimal)dist[i, j]);
                 }
@@ -289,14 +284,14 @@ namespace SomTest
         [DeploymentItem("patents1.txt")]
         public void SavingTest()
         {
-            var som = new Som(new Tuple<int, int>(3, 3), "patents1.txt");
+            var som = new Som(new Tuple<int, int>(10, 20), "patents1.txt");
             som.NormalizeInput(Normalization.Zscore);
-            som.Train(500);
+            som.Train(20);
             if (!Directory.Exists(@"c:\temp"))
             {
                 Directory.CreateDirectory(@"c:\temp");
             }
-            som.Save(100, @"c:\temp\res.txt");
+            som.Save(20, @"c:\temp\res.txt");
         }
 
 

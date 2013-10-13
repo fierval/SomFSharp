@@ -254,9 +254,7 @@ type Som(dims : int * int, nodes : Node seq) as this =
 
     member this.InitClasses () =
         let classes = (nodes |> Seq.map (fun n -> n.Class)).Distinct().Where(fun c -> not (String.IsNullOrEmpty(c))).ToList()
-        // randomly assign classes
-        let rnd = Random(int32(DateTime.Now.Ticks))
-        this.somMap |> Array2D.iteri(fun i j e -> e.Class <- classes.[(i * this.Width + j) % classes.Count])
+        this.somMap |> Seq.cast<Node> |> Seq.iter2 (fun c e -> e.Class <- c) classes
 
     abstract member TrainClassifier : int -> unit
     default this.TrainClassifier epochs = this.TrainClassifierLinear epochs
@@ -272,8 +270,9 @@ type Som(dims : int * int, nodes : Node seq) as this =
                     let (xBmu, yBmu) = this.GetBMUParallel(node)
                     let bmu = this.somMap.[xBmu, yBmu]
                     
-                    let y = if bmu.Class = node.Class then rule * rule else -1. * rule * rule                 
-                    this.trainNode this.somMap.[xBmu, yBmu] node (rule * y)
+                    if not (String.IsNullOrEmpty(bmu.Class)) then
+                        let y = if bmu.Class = node.Class then rule else -1. * rule                
+                        this.trainNode this.somMap.[xBmu, yBmu] node (rule * y)
 
                 let x = float(epoch + 1)
                 classify (epoch + 1) (epochs - 1) (modifyTrainRule x totalEpochs)
@@ -315,31 +314,43 @@ type Som(dims : int * int, nodes : Node seq) as this =
                     yield String (arr.[i..i, 0..] 
                         |> Seq.cast<string> |> Seq.fold (fun st e -> st + " " + e) String.Empty |> Seq.skip 1 |> Seq.toArray)
             }
-         
-        // 2D weights. Weights are calc'ed first before classifier has mucked them up
-        let weights = 
+
+        let saveWeights (arr : Node [,]) = 
             Array2D.init this.Height (this.Width * this.NodeLen )
                 (fun i j ->
-                    this.somMap.[i, j / this.NodeLen].[ j % this.NodeLen].ToString()
+                    arr.[i, j / this.NodeLen].[ j % this.NodeLen].ToString()
                 ) |> buildStringSeq
-            
-        // separator between chunks of output    
-        let separate () = output.Add(String.Empty)
+                 
+        // 2D weights. Weights are calc'ed first before classifier has mucked them up
+        let weights = saveWeights this.somMap
 
+        // separator between chunks of output    
+        let separate title = 
+            if output.Count > 0 then
+                output.Add(String.Empty)
+            output.Add title
+            output.Add("--------------------")
+
+        separate "Distance Map"
         // build the 2D array of distance map
         let distMap = this.DistanceMap()
         let strDistMap = distMap |> Array2D.map(fun e -> e.ToString()) |> buildStringSeq
         output.AddRange strDistMap
 
-        separate()
+        separate "Classes"
 
         if this.ShouldClassify then this.TrainClassifier epochs
         let classes = this.somMap |> Array2D.map (fun node -> node.Class) |> buildStringSeq
+        
         output.AddRange classes
             
-        separate()
+        separate "Trained Weights"
 
         output.AddRange weights
+
+        separate "Classified Weights"
+
+        output.AddRange (saveWeights this.somMap)
 
         // write it all out
         File.WriteAllLines(fileName, output)
