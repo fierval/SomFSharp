@@ -256,7 +256,8 @@ type Som(dims : int * int, nodes : Node seq) as this =
 
         train R0 nrule0 0 epochs isParallel
 
-    member this.InitClasses () =
+    abstract member InitClasses : unit -> unit
+    default this.InitClasses () =
         let classes = (nodes |> Seq.map (fun n -> n.Class)).Distinct().Where(fun c -> not (String.IsNullOrEmpty(c))).ToList()
         //this.somMap |> Seq.cast<Node> |> Seq.iter2 (fun c e -> e.Class <- c) classes
         this.somMap |> Array2D.iteri(fun i j e -> e.Class <- classes.[(i * this.Width + j) % classes.Count])
@@ -342,20 +343,21 @@ type Som(dims : int * int, nodes : Node seq) as this =
         let strDistMap = distMap |> Array2D.map(fun e -> e.ToString()) |> buildStringSeq
         output.AddRange strDistMap
 
-        separate "Classes"
+        if this.ShouldClassify then 
+            separate "Classes"
 
-        if this.ShouldClassify then this.TrainClassifier epochs
-        let classes = this.somMap |> Array2D.map (fun node -> node.Class) |> buildStringSeq
+            this.TrainClassifier epochs
+            let classes = this.somMap |> Array2D.map (fun node -> node.Class) |> buildStringSeq
         
-        output.AddRange classes
+            output.AddRange classes
             
         separate "Trained Weights"
 
         output.AddRange weights
-
-        separate "Classified Weights"
-
-        output.AddRange (saveWeights this.somMap)
+        
+        if this.ShouldClassify then
+            separate "Classified Weights"
+            output.AddRange (saveWeights this.somMap)
 
         // write it all out
         File.WriteAllLines(fileName, output)

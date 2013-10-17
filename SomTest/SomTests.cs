@@ -8,6 +8,7 @@ using MathNet.Numerics.Random;
 using System.Threading.Tasks;
 using Microsoft.FSharp.Core;
 using System.IO;
+using Microsoft.FSharp.Collections;
 
 namespace SomTest
 {
@@ -312,11 +313,22 @@ namespace SomTest
             var i = ij.Item1;
             var j = ij.Item2;
 
-            var gpuMins = som.GetBmuGpuShortMapSingle(nodes);
+            var gpuMins = som.GetBmuGpuShortMapSingle(som.asArray, nodes);
             var ijG = som.toSomCoordinates(gpuMins[ind]);
 
             Assert.AreEqual(i, ijG.Item1);
             Assert.AreEqual(j, ijG.Item2);
+        }
+
+        [TestMethod]
+        [TestCategory("Som")]
+        [DeploymentItem("patents1.txt")]
+        public void GetBmuUnifiedTest()
+        {
+            var som = new SomGpuTest(new Tuple<int, int>(10, 30), "patents1.txt");
+            som.NormalizeInput(Normalization.Zscore);
+            var bmus = som.GetBmuGpuShortMapSingle(som.InputNodes.SelectMany(n => n.AsEnumerable()).ToArray(), SeqModule.Cast<Node>(som.somMap));
+            Assert.IsNotNull(bmus);
         }
 
     }

@@ -28,11 +28,9 @@ type SomGpu(dims, nodes : Node seq) =
 
     member this.fromArray (somArray : float []) =
         let nodeLen = this.somMap.[0, 0].Count()
-        let arr = Array.zeroCreate nodeLen
         Parallel.For(0, somArray.Length / nodeLen, fun i ->
             let x, y = this.toSomCoordinates i
-            for j = 0 to nodeLen - 1 do
-                arr.[j] <- somArray.[i * nodeLen + j]
+            let arr = Array.init nodeLen (fun j -> somArray.[i * nodeLen + j])
             this.somMap.[x,y] <- Node(arr)) |> ignore
         this.somMap
        
@@ -40,21 +38,21 @@ type SomGpu(dims, nodes : Node seq) =
         let worker = Engine.workers.DefaultWorker
         use pfuncm = worker.LoadPModule(this.pTestBmu)
 
-        let mins = pfuncm.Invoke (nodes |> Seq.map (fun n -> n.ToArray()) |> Seq.toList)
+        let mins = pfuncm.Invoke this.asArray (nodes |> Seq.map (fun n -> n.ToArray()) |> Seq.toList)
         mins
 
-    member this.GetBmuGpuUnified (nodes : Node seq) =
+    member this.GetBmuGpuUnified (map : float []) (nodes : Node seq) =
         let worker = Engine.workers.DefaultWorker
         use pfuncm = worker.LoadPModule(this.pTestUnifiedBmu)
 
-        let mins = pfuncm.Invoke (nodes |> Seq.map (fun n -> n.ToArray()) |> Seq.toList)
+        let mins = pfuncm.Invoke map (nodes |> Seq.map (fun n -> n.ToArray()) |> Seq.toList)
         mins
 
     member this.GetBmuGpuShortMap (nodes : Node seq) =
         let worker = Engine.workers.DefaultWorker
         use pfuncm = worker.LoadPModule(this.pTestDistShortMap)
 
-        let mins = pfuncm.Invoke (nodes |> Seq.map (fun n -> n.ToArray()) |> Seq.toList)
+        let mins = pfuncm.Invoke this.asArray (nodes |> Seq.map (fun n -> n.ToArray()) |> Seq.toList)
         mins
                             
     override this.Train epochs =
@@ -64,14 +62,33 @@ type SomGpu(dims, nodes : Node seq) =
         pfuncm.Invoke (this.InputNodes |> Seq.map (fun n -> n.ToArray()) |> Seq.toList) epochs
         |> this.fromArray
 
+    member this.MergeNodes () =
+        this.InputNodes.SelectMany(fun (n : Node) -> n :> float seq)
+
+    // initialize classes by assigning a class of the
+    // nearest node to each code vector
+    override this.InitClasses () =
+        // for each code vector pick a node closest to it.
+        // this is the reverse of finding a BMU.
+        let map = this.MergeNodes().ToArray()
+        let nodes = this.somMap |> Seq.cast<Node>
+        let bmNodes = this.GetBmuGpuUnified map nodes
+        let nodeLen = this.NodeLen
+
+        nodes |> Seq.iteri
+            (fun i node -> 
+                let bmNode = bmNodes.[i]
+                let x, y = this.toSomCoordinates i
+                this.somMap.[x, y].Class <- this.InputNodes.[bmNode].Class
+            )
+
     override this.TrainClassifier epochs =
+        this.InitClasses()
         let worker = Engine.workers.DefaultWorker
         use pfuncm = worker.LoadPModule(this.pTrainClassifier)
     
         pfuncm.Invoke epochs
 
-    member this.MergeNodes () =
-        nodes.SelectMany(fun (n : Node) -> n :> IEnumerable<float>)
 
     override this.DistanceMap () =
         let worker = Engine.workers.DefaultWorker

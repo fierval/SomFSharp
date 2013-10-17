@@ -30,7 +30,7 @@ let main argv =
         let bound = int(floor(upper * 1.2))
         let nodes = ([1..bound] |> Seq.map (fun i -> Node(12))).ToList()
         let som1 = SomGpu((200, 200), nodes)
-
+        let map = (som1.somMap |> Seq.cast<Node>).SelectMany(fun (n : Node) -> n.AsEnumerable()).ToArray()
         printfn "\n"
         printfn "Number of nodes: %d" bound
         for i = 1 to 3 do
@@ -39,7 +39,7 @@ let main argv =
             printfn "\tAttempt: %d" i
 
             tic()
-            let minsGpu2 = som1.GetBmuGpuUnified nodes
+            let minsGpu2 = som1.GetBmuGpuUnified map nodes
             printfn "\tgpu iterations multiple copies of nodes: %10.3f ms" (toc())
 
             if j < 2 then
@@ -63,7 +63,9 @@ let mainBmuTest argv =
     let dim2 = 20
     let nodes = ([1..bound] |> Seq.map (fun i -> Node(11))).ToList()
     let som1 = SomGpu((dim1, dim2), nodes)
-    let bmus = som1.GetBmuGpuUnified nodes
+    let map = (som1.somMap |> Seq.cast<Node>).SelectMany(fun (n : Node) -> n.AsEnumerable()).ToArray()
+
+    let bmus = som1.GetBmuGpuUnified map nodes
     let mutable failed = 0
     for i = 0 to bound - 1 do
         let bmu = som1.GetBMU nodes.[i]
@@ -133,7 +135,9 @@ let shortMapTest argv =
     let som1 = SomGpu((dim1, dim2), nodes)
     let nodes = ([1..bound] |> Seq.map (fun i -> Node(11))).ToList()
     let som1 = SomGpu((dim1, dim2), nodes)
-    let bmus = som1.GetBmuGpuUnified nodes
+    let map = (som1.somMap |> Seq.cast<Node>).SelectMany(fun (n : Node) -> n.AsEnumerable()).ToArray()
+
+    let bmus = som1.GetBmuGpuUnified map nodes
     let mutable failed = 0
     for i = 0 to bound - 1 do
         let bmu = som1.GetBMU nodes.[i]
@@ -152,24 +156,36 @@ let timeShortMapTest argv =
     let dim2 = 80
     let nodes = ([1..bound] |> Seq.map (fun i -> Node(12))).ToList()
     let som1 = SomGpu((dim1, dim2), nodes)
-    
+    let map = (som1.somMap |> Seq.cast<Node>).SelectMany(fun (n : Node) -> n.AsEnumerable()).ToArray()
+
     for i = 1 to 3 do
         printfn "\n"
         printfn "============================"
         printfn "\tAttempt: %d" i
 
         tic()
-        let dist = som1.GetBmuGpuUnified nodes
+        let dist = som1.GetBmuGpuUnified map nodes
         printfn "\tgpu unified: %10.3f ms" (toc())
+
+let bmuShortDistance (argv : string []) =
+    let som1 = SomGpu((10, 30), argv.[0])
+    som1.NormalizeInput(Normalization.Zscore)
+
+    let map = som1.MergeNodes().ToArray()
+    let nodes = som1.somMap |> Seq.cast<Node>
+
+    let bmus = som1.GetBmuGpuUnified map nodes
+    bmus
 
 [<EntryPoint>]
 let tests argv =
     //classifyTrainTest argv
-    mainTrainTest argv
+    //mainTrainTest argv
     //for i = 0 to 10 do
     //mainBmuTest argv
     //main argv
     //findDistance argv
     //shortMapTest argv
     //timeShortMapTest argv
+    bmuShortDistance argv |> ignore
     0

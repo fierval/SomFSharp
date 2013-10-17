@@ -166,13 +166,13 @@ type SomGpuTest =
                 j <- j + stride
         finalMinIndex        
    
-    member this.GetBmuGpuShortMapSingle (nodes : Node seq) =
+    member this.GetBmuGpuShortMapSingle (map : float []) (nodes : Node seq) =
         let nodeLen = nodes.First().Count()
         let nNodes = nodes.Count()
         let len = nodeLen * nNodes
 
         let nt =  ((this.DimX * this.DimY) / nodeLen) * nodeLen
-        let mapLen = this.asArray.Length / nodeLen
+        let mapLen = map.Length / nodeLen
         let nBlocks = this.GetBlockDim len nt //split the array of nodes into blocks
 
         let minDist = Array.create nNodes Double.MaxValue
@@ -187,7 +187,7 @@ type SomGpuTest =
 
                     if xNode < nNodes * nodeLen then
                         let xMap = (xNode / nodeLen % mapLen + iter) % mapLen * nodeLen + threadX % nodeLen
-                        distances.[xNode] <- (nodes.[xNode] - this.asArray.[xMap]) * (nodes.[xNode] - this.asArray.[xMap])
+                        distances.[xNode] <- (nodes.[xNode] - map.[xMap]) * (nodes.[xNode] - map.[xMap])
 
                         if threadX % nodeLen = 0 then
                             let mutable dist = 0.
