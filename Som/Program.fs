@@ -62,6 +62,16 @@ let run (args : Dictionary<string, string>) =
             out <- node |> Seq.fold(fun st v -> st + "\t" + v.ToString()) out 
             output.Add(out)
         File.WriteAllLines(outFile, output)
+    | Test (trainedFile, testDataFile, outFile) ->
+        if not (File.Exists trainedFile) || (not (File.Exists testDataFile)) then failwith "input file(s) missing"
+        if String.IsNullOrWhiteSpace(outFile) || String.IsNullOrWhiteSpace(testDataFile) || String.IsNullOrWhiteSpace(trainedFile) then failwith "File name cannot be empty"
+
+        let som, nodes = Som.ReadTestSom trainedFile testDataFile
+        let width, height = som |> Array2D.length1, som|> Array2D.length2
+        let somGpu = SomGpu((width, height), nodes)
+
+        if File.Exists outFile then File.Delete outFile
+        somGpu.SaveClassified outFile
     |_ -> failwith "need to specify either \"t\" or \"r\" or \"n\" as the action" 
     0
 
@@ -73,8 +83,8 @@ let main argv =
             {Command = "n"; Description = "Normalize"; Required = false};
             {Command = "d"; Description = "Dimensions, comma-separted"; Required = false};
             {Command = "r"; Description = "Test"; Required = false};
-            {Command = "if"; Description="Input File"; Required = false};
-            {Command = "tf"; Description="Test File"; Required = false};
+            {Command = "if"; Description="Input File (input nodes or data produced by a training run)"; Required = false};
+            {Command = "tf"; Description="Test File (contains data to test)"; Required = false};
             {Command = "of"; Description="Output File"; Required = false};
             {Command = "e"; Description="Epochs"; Required = false};
 

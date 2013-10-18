@@ -68,12 +68,8 @@ type Som(dims : int * int, nodes : Node seq) as this =
             this.somMap |> Array2D.iteri (fun i j e -> e |> Seq.iteri (fun k el -> (!arr).[i * x * z + z * j + k] <- el))
             !arr        
         
-
-    static member Read fileName =
-        if not (File.Exists fileName) then failwith ("file does not exist: " + fileName)
-
+    static member ParseNodes (lines : string []) =
         let seps = [|' '; '\t'|]
-        let lines = File.ReadAllLines fileName
         let name = ref String.Empty
         let classs = ref String.Empty
         let nodeLen = ref 0
@@ -119,7 +115,51 @@ type Som(dims : int * int, nodes : Node seq) as this =
                     nodes.Add node
                 | _ -> failwith "unsupported format"    
             )
-        nodes.AsEnumerable()
+        nodes
+
+    static member ParseSom (lines : string []) nodeLen =
+        Array2D.init (lines.Length) (lines.[0].Length / nodeLen) 
+            (fun i j ->
+                let entries = lines.[i].Split('\t')
+                Node(Array.init nodeLen (fun k -> Double.Parse(entries.[j * nodeLen + k])))
+            ) 
+
+    static member ParseClasses (som : Node [,]) nodeLen (classLines : string []) =
+        let width = som |> Array2D.length1        
+        classLines 
+        |> Seq.iteri
+            (fun i c ->
+                let x = i / width 
+                let y = i - x * width
+                som.[x, y].Class <- c
+            )
+
+    static member ReadTestSom somFileName nodesFileName = 
+        if not (File.Exists somFileName) then failwith ("file does not exist: " + somFileName)
+        if not (File.Exists nodesFileName) then failwith ("file does not exist: " + nodesFileName)
+
+        let seps = [|' '; '\t'|]
+        let lines = File.ReadAllLines somFileName
+        let nodesLines = File.ReadAllLines nodesFileName
+        
+        let nodes = Som.ParseNodes nodesLines
+        let nodeLen = nodes.[0].Count()
+
+        let weightLines = lines.SkipWhile(fun l -> l <> "Classified Weights")
+        if weightLines.Count() = 0 then failwith "Classifier not trained"
+        let weightLines = weightLines.Skip(2).TakeWhile(fun l -> l <> String.Empty).ToArray()
+        let som = Som.ParseSom weightLines nodeLen
+        
+        let classLines = lines.SkipWhile(fun l -> l <> "Classes").Skip(2).TakeWhile(fun l -> l <> String.Empty).ToArray()
+        Som.ParseClasses som nodeLen classLines
+
+        som, nodes
+
+    static member Read fileName =
+        if not (File.Exists fileName) then failwith ("file does not exist: " + fileName)
+
+        let lines = File.ReadAllLines fileName
+        Som.ParseNodes lines
 
     new (dim : int * int, fileName : string) as this = 
         Som(dim, Som.Read fileName) 
