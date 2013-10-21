@@ -72,10 +72,15 @@ type Som(dims : int * int, nodes : Node seq) as this =
         output.Add("--------------------")
     
     let flattenSom (som : Node [,]) =
-        let x, y = som |> Array2D.length1, som |> Array2D.length2
+        let height, width = som |> Array2D.length1, som |> Array2D.length2
         let z = som.[0, 0].Count()
-        let arr : float [] = Array.zeroCreate(x * y * z)
-        som |> Array2D.iteri (fun i j e -> e |> Seq.iteri (fun k el -> arr.[i * x * z + z * j + k] <- el))
+        let arr : float [] = Array.zeroCreate(width * height * z)
+        som 
+        |> Array2D.iteri (
+            fun i j e -> 
+            e 
+            |> Seq.iteri (
+                fun k el -> arr.[i * width * z + j * z + k] <- el))
         arr
     do
         this.somMap <- initialize()
@@ -119,13 +124,18 @@ type Som(dims : int * int, nodes : Node seq) as this =
                         nodes.Add node
                 | n when n = 1 ->
                     let res = ref 0.
-                    let haveClasses = not (Double.TryParse(entries.[0], res))
-                    let node = Node(entries |> Seq.skip(if haveClasses then 2 else 0) |> Seq.map(fun e -> Double.Parse(e)))    
+                    let resInt = ref 0
+                    let haveClasses = not (Double.TryParse(entries.[1], res)) && not (Int32.TryParse(entries.[1], resInt))
+                    let haveName = not (Double.TryParse(entries.[0], res)) && not (Int32.TryParse(entries.[0], resInt))
+
+                    let node = Node(entries |> Seq.skip(if haveClasses then 2 else (if haveName then 1 else 0)) |> Seq.map(fun e -> Double.Parse(e)))    
                     if node.Count() <> !nodeLen && !nodeLen > 0 then failwith ("wrong length found, line " + i.ToString())
                     if !nodeLen = 0 then
                         nodeLen := node.Count()
-                    node.Name <- entries.[0]
-                    node.Class <- entries.[1]
+                    if haveName then
+                        node.Name <- entries.[0]
+                    if haveClasses then
+                        node.Class <- entries.[1]
                     nodes.Add node
                 | _ -> failwith "unsupported format"    
             )
@@ -169,15 +179,17 @@ type Som(dims : int * int, nodes : Node seq) as this =
 
         som, nodes
 
-    static member Read fileName =
+    static member Read fileName header =
         if not (File.Exists fileName) then failwith ("file does not exist: " + fileName)
 
-        let lines = File.ReadAllLines fileName
+
+        let lines = if header > 0 then (File.ReadAllLines fileName).Skip(header).ToArray() else File.ReadAllLines fileName
         Som.ParseNodes lines
 
-    new (dim : int * int, fileName : string) as this = 
-        Som(dim, Som.Read fileName) 
-        then this.ShouldClassify <- this.InputNodes.First(fun n-> not (String.IsNullOrEmpty(n.Class))).Count() > 0
+    new (dim : int * int, fileName : string, ?header) as this = 
+        let header = defaultArg header 0
+        Som(dim, Som.Read fileName header) 
+        then this.ShouldClassify <- this.InputNodes.First(fun n-> not (String.IsNullOrEmpty(n.Class))) <> Unchecked.defaultof<Node>
 
     member this.ModifyTrainRule x epochs =
         nrule0 * exp(-10.0 * (x * x) / float(epochs * epochs))

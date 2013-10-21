@@ -17,9 +17,9 @@ type SomGpuBase(dims, nodes : Node seq) =
             stopWatch.Stop()
             stopWatch.Elapsed.TotalMilliseconds
 
-    new (dim : int * int, fileName : string) as this =
-        SomGpuBase(dim, Som.Read fileName)
-        then this.ShouldClassify <- this.InputNodes.First(fun n-> not (String.IsNullOrEmpty(n.Class))).Count() > 0
+    new (dim : int * int, fileName : string, ?header) =
+        let header = defaultArg header 0
+        SomGpuBase(dim, Som.Read fileName header)
 
     member this.pTrain = 
         cuda {

@@ -23,7 +23,8 @@
     <PlatformTarget>AnyCPU</PlatformTarget>
     <DocumentationFile>bin\Debug\Som.XML</DocumentationFile>
     <Prefer32Bit>true</Prefer32Bit>
-    <StartArguments>-t -d "10,10" -e 100 -if patents_norm.txt -of patents_map.txt</StartArguments>
+    <StartArguments>-t -n -d "30,25" -e 300 -if pathwayABI.txt -of pathwayABI_map.txt -header 1</StartArguments>
+    <StartWorkingDirectory>C:\Users\boris\Dropbox\Visual\snyderData</StartWorkingDirectory>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
     <DebugType>pdbonly</DebugType>
@@ -35,7 +36,8 @@
     <PlatformTarget>AnyCPU</PlatformTarget>
     <DocumentationFile>bin\Release\Som.XML</DocumentationFile>
     <Prefer32Bit>true</Prefer32Bit>
-    <StartArguments>-t -n -d "100,100" -e 100 -if experiments.txt -of experiments_map.txt</StartArguments>
+    <StartArguments>-t -n -d "30,25" -e 300 -if pathwayABI.txt -of pathwayABI_map.txt -header 1</StartArguments>
+    <StartWorkingDirectory>C:\Users\boris\Dropbox\Visual\snyderData\</StartWorkingDirectory>
   </PropertyGroup>
   <PropertyGroup>
     <MinimumVisualStudioVersion Condition="'$(MinimumVisualStudioVersion)' == ''">11</MinimumVisualStudioVersion>

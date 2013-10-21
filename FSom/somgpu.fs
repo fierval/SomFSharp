@@ -22,9 +22,8 @@ type SomGpu(dims, nodes : Node seq) =
             stopWatch.Stop()
             stopWatch.Elapsed.TotalMilliseconds
 
-    new (dim : int * int, fileName : string) as this = 
-        SomGpu(dim, Som.Read fileName)  
-        then this.ShouldClassify <- this.InputNodes.First(fun n-> not (String.IsNullOrEmpty(n.Class))).Count() > 0
+    new (dim : int * int, fileName : string, ?header) = 
+        SomGpu(dim, Som.Read fileName (defaultArg header 0))  
 
     member this.fromArray (somArray : float []) =
         let nodeLen = this.somMap.[0, 0].Count()

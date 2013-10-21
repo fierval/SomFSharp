@@ -11,7 +11,8 @@ let (|Train|_|) (args : Dictionary<string, string>) =
     let keys = args.Keys
     if (keys.Contains "t") then
         let dms = dims()
-        Some(keys.Contains "n", dms.[0], dms.[1], Int32.Parse(args.["e"].Trim()), args.["if"].Trim(), args.["of"].Trim())
+        let header = if keys.Contains "header" then Int32.Parse(args.["header"]) else 0
+        Some(keys.Contains "n", dms.[0], dms.[1], Int32.Parse(args.["e"].Trim()), args.["if"].Trim(), args.["of"].Trim(), header)
     else 
         None
 
@@ -38,8 +39,8 @@ let run (args : Dictionary<string, string>) =
     if (keys.Contains "t") && (keys.Contains "r") then failwith "both \"t\" and \"r\" are not allowed." 
 
     match args with
-    | Train (normalize, height, width, epochs, fileName, outFile) ->
-        let som = SomGpu((height, width), fileName)  
+    | Train (normalize, height, width, epochs, fileName, outFile, header) ->
+        let som = SomGpu((height, width), fileName, header)  
         //let som = SomGpuTest((height, width), fileName)  
         if normalize then
             som.NormalizeInput(Normalization.Zscore)
@@ -78,7 +79,6 @@ let run (args : Dictionary<string, string>) =
         let classes = somGpu.Classify nodes
         somGpu.SaveClassified nodes classes outFile
     |_ -> failwith "need to specify either \"t\" or \"r\" or \"n\" as the action" 
-    0
 
 [<EntryPoint>]
 let main argv = 
@@ -92,9 +92,15 @@ let main argv =
             {Command = "tf"; Description="Test File (contains data to test)"; Required = false};
             {Command = "of"; Description="Output File"; Required = false};
             {Command = "e"; Description="Epochs"; Required = false};
-
+            {Command = "header"; Description="lines to skip before reading"; Required = false};
         ]
 
     let args = ParseArgs argv expectedArgs
-    run args
+    try
+        run args
+        0
+    with 
+    | e -> Console.WriteLine(e.ToString()); 1
+    
+
      

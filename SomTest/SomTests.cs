@@ -241,7 +241,7 @@ namespace SomTest
         public void DistMapSingleTest()
         {
 
-            var som = new SomGpuTest(new Tuple<int, int>(10, 20), "patents.txt");
+            var som = new SomGpuTest(new Tuple<int, int>(10, 20), "patents.txt", FSharpOption<int>.None);
             var dist = som.GetDistanceMapSingle();
 
             var distExp = som.LinearGetDistanceMap();
@@ -259,7 +259,7 @@ namespace SomTest
         [DeploymentItem("patents.txt")]
         public void ReadFormat0Test()
         {
-            var som = new SomGpu(new Tuple<int, int>(3, 3), "patents.txt");
+            var som = new SomGpu(new Tuple<int, int>(3, 3), "patents.txt", FSharpOption<int>.None);
             Assert.AreEqual(true, som.ShouldClassify);
             Assert.AreEqual(4, som.NodeLen);
             Assert.AreEqual("1", som.InputNodes[0].Class);
@@ -272,7 +272,7 @@ namespace SomTest
         [DeploymentItem("patents1.txt")]
         public void ReadFormat1Test()
         {
-            var som = new SomGpu(new Tuple<int, int>(3, 3), "patents1.txt");
+            var som = new SomGpu(new Tuple<int, int>(3, 3), "patents1.txt", FSharpOption<int>.None);
             Assert.AreEqual(true, som.ShouldClassify);
             Assert.AreEqual(4, som.NodeLen);
             Assert.AreEqual("1", som.InputNodes[0].Class);
@@ -285,7 +285,7 @@ namespace SomTest
         [DeploymentItem("patents1.txt")]
         public void SavingTest()
         {
-            var som = new Som(new Tuple<int, int>(10, 20), "patents1.txt");
+            var som = new Som(new Tuple<int, int>(10, 20), "patents1.txt", FSharpOption<int>.None);
             som.NormalizeInput(Normalization.Zscore);
             som.Train(20);
             if (!Directory.Exists(@"c:\temp"))
@@ -325,7 +325,7 @@ namespace SomTest
         [DeploymentItem("patents1.txt")]
         public void GetBmuUnifiedTest()
         {
-            var som = new SomGpuTest(new Tuple<int, int>(10, 30), "patents1.txt");
+            var som = new SomGpuTest(new Tuple<int, int>(10, 30), "patents1.txt", FSharpOption<int>.None);
             som.NormalizeInput(Normalization.Zscore);
             var bmus = som.GetBmuGpuShortMapSingle(som.InputNodes.SelectMany(n => n.AsEnumerable()).ToArray(), SeqModule.Cast<Node>(som.somMap));
             Assert.IsNotNull(bmus);

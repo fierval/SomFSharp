@@ -21,7 +21,7 @@ type SomGpuTest =
     inherit Som
 
     new (dim, nodes : Node seq) = {inherit Som(dim, nodes)}
-    new (dim : int * int, fileName : string) = {inherit Som(dim, fileName)}
+    new (dim : int * int, fileName : string, ?header) = {inherit Som(dim, fileName, defaultArg header 0)}
 
     member this.GetBmuGpuSingleNodeByNode (node : Node) =
         let arrNode = node.ToArray()
