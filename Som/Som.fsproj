@@ -36,7 +36,7 @@
     <PlatformTarget>AnyCPU</PlatformTarget>
     <DocumentationFile>bin\Release\Som.XML</DocumentationFile>
     <Prefer32Bit>true</Prefer32Bit>
-    <StartArguments>-t -n -d "30,25" -e 300 -if pathwayABI.txt -of pathwayABI_map.txt -header 1</StartArguments>
+    <StartArguments>-t -n -d "100,100" -e 500 -if pathwayABI.txt -of pathwayABI_map.txt -header 1</StartArguments>
     <StartWorkingDirectory>C:\Users\boris\Dropbox\Visual\snyderData\</StartWorkingDirectory>
   </PropertyGroup>
   <PropertyGroup>

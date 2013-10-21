@@ -288,7 +288,7 @@ type SomGpuBase(dims, nodes : Node seq) =
                 use dNodes = m.Worker.Malloc(nodes.SelectMany(fun n -> n :> float seq).ToArray())
 
                 // training constants                    
-                let R0 = float(this.Width / 2)
+                let R0 = float((max this.Height this.Width) / 2)
                 let nrule0 = 0.9
                 let modifyR x =
                     R0 * exp(-10.0 * (x * x) / float(epochs * epochs))
