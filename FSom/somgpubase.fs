@@ -51,7 +51,6 @@ type SomGpuBase(dims, nodes : Node seq) =
                         kernelTrain.Launch lp nodeLen len this.Width this.Height bmuX bmuY (r * r) nrule (dNodes + i * nodeLen) dMap
                     else 
                         this.trainNode this.somMap.[bmuX, bmuY] this.InputNodes.[i] nrule
-                printfn "epoch: %d, nrule: %10.5f, R: %10.3f, time: %10.3f ms" epoch nrule r (toc())
             )            
         }
 
@@ -62,11 +61,11 @@ type SomGpuBase(dims, nodes : Node seq) =
                     (map : DevicePtr<float>)
                     (distMap : DevicePtr<float>) ->
                         
-                    let x = blockDim.x * blockIdx.x + threadIdx.x 
-                    let y = blockDim.y * blockIdx.y + threadIdx.y
+                    let i = blockDim.x * blockIdx.x + threadIdx.x 
 
-                    if y < width && x < height then 
-                        let i = x * width + y
+                    if i < width * height then 
+                        let x = i / width
+                        let y = i - x * width
 
                         let mutable dist = 0.
                         let mutable n = 0
@@ -90,11 +89,11 @@ type SomGpuBase(dims, nodes : Node seq) =
                 let pDistMap = kernelDistanceMap.Apply m
                 let len = this.asArray.Length
                 let nodeLen = this.NodeLen
-                let nt =  dim3(min this.Height this.DimX, min this.Width this.DimY)
                 let mapLen = len / nodeLen
-                let nBlocks = dim3(this.GetBlockDim this.Height nt.x, this.GetBlockDim this.Width nt.y)
+                let nt =  min (this.DimX * this.DimY) mapLen
+                let nBlocks = this.GetBlockDim mapLen nt
 
-                use dMap = m.Worker.Malloc(this.asArray)
+                use dMap = m.Worker.Malloc(this.toArray)
                 use dDists = m.Worker.Malloc<float>(mapLen)
                     
                 let lp = LaunchParam(nBlocks, nt) 
@@ -281,7 +280,7 @@ type SomGpuBase(dims, nodes : Node seq) =
                 let nt =  ((this.DimX * this.DimY) / nodeLen) * nodeLen
                 let nBlocks = this.GetBlockDim len nt //split the array of nodes into blocks
 
-                use dMap = m.Worker.Malloc(this.asArray)
+                use dMap = m.Worker.Malloc(this.toArray)
                 let minDist = Array.create nNodes Double.MaxValue
                 use dMinDists = if nNodes <= mapLen then m.Worker.Malloc<float>(mapLen) else m.Worker.Malloc(minDist)
                 use dMinIndex = m.Worker.Malloc<int>(if nNodes <= mapLen then mapLen else nNodes) 
@@ -311,15 +310,16 @@ type SomGpuBase(dims, nodes : Node seq) =
                     tic ()
 
                     let mins = getMins()
-                    printfn "found all minimums for the epoch: %10.3f ms" (toc())
+                    //printfn "found all minimums for the epoch: %10.3f ms" (toc())
+                    //tic()
 
                     let r = modifyR (float epoch)
                     let nrule = modifyTrainRule (float epoch)
 
-                    tic()
-
                     //Step 2. Training.
                     ptrain epoch epochs r nrule nt nBlocksTrain mins nodeLen mapFullLen dNodes.Ptr dMap.Ptr
+                    printfn "epoch: %d, nrule: %10.5f, R: %10.3f, time: %10.3f ms" epoch nrule r (toc())
+
 
                 dMap.ToHost()
             )    
@@ -431,13 +431,14 @@ type SomGpuBase(dims, nodes : Node seq) =
                     let nodeLen = nodes.[0].Count()
 
                     let mapLen = this.asArray.Length / nodeLen
+                    let mapFullLen = this.asArray.Length
 
                     let len = if nNodes <= mapLen then this.asArray.Length else nNodes * nodeLen
 
                     let nt =  ((this.DimX * this.DimY) / nodeLen) * nodeLen
                     let nBlocks = this.GetBlockDim len nt //split the array of nodes into blocks
 
-                    use dMap = m.Worker.Malloc(this.asArray)
+                    use dMap = m.Worker.Malloc(this.toArray)
                     let minDist = Array.create nNodes Double.MaxValue
                     use dMinDists = if nNodes <= mapLen then m.Worker.Malloc<float>(mapLen) else m.Worker.Malloc(minDist)
                     use dMinIndex = m.Worker.Malloc<int>(if nNodes <= mapLen then mapLen else nNodes) 
@@ -449,13 +450,13 @@ type SomGpuBase(dims, nodes : Node seq) =
 
                         let mins = 
                             if nNodes <= mapLen  then
-                                pdist dMap dNodes dTemp dMinDists dMinIndex len nodeLen nNodes nt nBlocks
+                                pdist dMap dNodes dTemp dMinDists dMinIndex mapFullLen nodeLen nNodes nt nBlocks
                             else
-                                pdistShortMap dMap dNodes dTemp dMinDists dMinIndex len nodeLen nNodes nt nBlocks
+                                pdistShortMap dMap dNodes dTemp dMinDists dMinIndex mapFullLen nodeLen nNodes nt nBlocks
 
                         let nrule = this.ModifyTrainRule (float epoch) epochs
-                        printfn "Found all minimums, epoch %d, %10.3fms" epoch (toc())
-                        tic()
+                        //printfn "Found all minimums, epoch %d, %10.3fms" epoch (toc())
+                        //tic()
                         mins |> Seq.iteri 
                             (fun i bmu ->
                                 let (xBmu, yBmu) = this.toSomCoordinates bmu

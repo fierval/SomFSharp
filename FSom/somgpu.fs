@@ -59,8 +59,9 @@ type SomGpu(dims, nodes : Node seq) =
         let worker = Engine.workers.DefaultWorker
         use pfuncm = worker.LoadPModule(this.pTrainSom)
 
-        pfuncm.Invoke (this.InputNodes |> Seq.map (fun n -> n.ToArray()) |> Seq.toList) epochs
+        this.somMap <- pfuncm.Invoke (this.InputNodes |> Seq.map (fun n -> n.ToArray()) |> Seq.toList) epochs
         |> this.fromArray
+        this.somMap
 
     member this.MergeNodes () =
         this.InputNodes.SelectMany(fun (n : Node) -> n :> float seq)
@@ -105,5 +106,11 @@ type SomGpu(dims, nodes : Node seq) =
                     map.[i * this.Width + j]
                     )
         distMap
-
-
+    
+    override this.Classify nodes =
+        let mins = this.GetBmuGpuUnified this.asArray nodes
+        mins |> Array.map 
+            (fun m -> 
+                let x, y = this.toSomCoordinates m
+                this.somMap.[x, y].Class    
+            )

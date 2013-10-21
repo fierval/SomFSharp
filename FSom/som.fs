@@ -58,16 +58,30 @@ type Som(dims : int * int, nodes : Node seq) as this =
 
     let dimX, dimY = 32, 32
 
+    let buildStringSeq (arr : string [,]) =
+        seq {
+            for i = 0 to this.Height - 1 do 
+                yield String (arr.[i..i, 0..] 
+                    |> Seq.cast<string> |> Seq.fold (fun st e -> st + "\t" + e) String.Empty |> Seq.skip 1 |> Seq.toArray)
+        }
+
+    let separate (output : System.Collections.Generic.List<string>) title = 
+        if output.Count > 0 then
+            output.Add(String.Empty)
+        output.Add title
+        output.Add("--------------------")
+    
+    let flattenSom (som : Node [,]) =
+        let x, y = som |> Array2D.length1, som |> Array2D.length2
+        let z = som.[0, 0].Count()
+        let arr : float [] = Array.zeroCreate(x * y * z)
+        som |> Array2D.iteri (fun i j e -> e |> Seq.iteri (fun k el -> arr.[i * x * z + z * j + k] <- el))
+        arr
     do
         this.somMap <- initialize()
         printfn "Initialized map: %d x %d, %d dimensions, %d nodes" height width (this.NodeLen) (nodes.Count)
-        this.asArray <-
-            let x, y = width, height
-            let z = this.somMap.[0,0].Count()
-            let arr : float [] ref = ref (Array.zeroCreate (x * y * z))
-            this.somMap |> Array2D.iteri (fun i j e -> e |> Seq.iteri (fun k el -> (!arr).[i * x * z + z * j + k] <- el))
-            !arr        
-        
+        this.asArray <- flattenSom this.somMap
+                    
     static member ParseNodes (lines : string []) =
         let seps = [|' '; '\t'|]
         let name = ref String.Empty
@@ -176,6 +190,8 @@ type Som(dims : int * int, nodes : Node seq) as this =
     member this.ShouldClassify 
         with get() = shouldClassify
         and set value = shouldClassify <- value
+    
+    member this.toArray = flattenSom this.somMap
 
     member this.GetBlockDim len nThreads = getBlockDim len nThreads
     member this.DimX = dimX
@@ -347,19 +363,23 @@ type Som(dims : int * int, nodes : Node seq) as this =
     default this.DistanceMap () =
         this.LinearGetDistanceMap()
 
-    member this.Save epochs fileName =
+    abstract member Classify : Node seq -> string []
+    default this.Classify nodes =
+        nodes 
+        |> Seq.map (fun n ->
+            let x, y = this.GetBMUParallel(n)
+            this.somMap.[x,y].Class
+            )
+        |> Seq.toArray
+
+    // save to file. if distClassSeparate = true
+    // saves distance map and class map to separate files
+    member this.Save epochs fileName distClassSeparate =
         if String.IsNullOrWhiteSpace fileName then failwith "File name must be specified"
 
         if File.Exists fileName then File.Delete fileName
 
         let output = List<string>()
-
-        let buildStringSeq (arr : string [,]) =
-            seq {
-                for i = 0 to this.Height - 1 do 
-                    yield String (arr.[i..i, 0..] 
-                        |> Seq.cast<string> |> Seq.fold (fun st e -> st + "\t" + e) String.Empty |> Seq.skip 1 |> Seq.toArray)
-            }
 
         let saveWeights (arr : Node [,]) = 
             Array2D.init this.Height (this.Width * this.NodeLen )
@@ -367,40 +387,75 @@ type Som(dims : int * int, nodes : Node seq) as this =
                     arr.[i, j / this.NodeLen].[ j % this.NodeLen].ToString()
                 ) |> buildStringSeq
                  
+        let insertIntoFileName fileName insert =
+            let path, name, ext = Path.GetDirectoryName(fileName), Path.GetFileNameWithoutExtension(fileName) + insert, Path.GetExtension(fileName)
+            Path.Combine(path, name + ext)
+
         // 2D weights. Weights are calc'ed first before classifier has mucked them up
         let weights = saveWeights this.somMap
 
-        // separator between chunks of output    
-        let separate title = 
-            if output.Count > 0 then
-                output.Add(String.Empty)
-            output.Add title
-            output.Add("--------------------")
-
-        separate "Distance Map"
-        // build the 2D array of distance map
         let distMap = this.DistanceMap()
         let strDistMap = distMap |> Array2D.map(fun e -> e.ToString()) |> buildStringSeq
+
+        separate output "Distance Map"
+        // build the 2D array of distance map
         output.AddRange strDistMap
+        if distClassSeparate then 
+            let distOutput = List<string>()
+            distOutput.AddRange strDistMap
+            File.WriteAllLines(insertIntoFileName fileName "_dist_map", distOutput)
+
 
         if this.ShouldClassify then 
-            separate "Classes"
+            separate output "Classes"
 
             this.TrainClassifier epochs
             let classes = this.somMap |> Array2D.map (fun node -> node.Class) |> buildStringSeq
         
             output.AddRange classes
-            
-        separate "Trained Weights"
+
+            if distClassSeparate then 
+                let distOutput = List<string>()
+                distOutput.AddRange classes
+                File.WriteAllLines(insertIntoFileName fileName "_class_map", distOutput)
+
+        separate output "Trained Weights"
 
         output.AddRange weights
         
         if this.ShouldClassify then
-            separate "Classified Weights"
+            separate output "Classified Weights"
             output.AddRange (saveWeights this.somMap)
 
         // write it all out
         File.WriteAllLines(fileName, output)
-            
+
+    member this.SaveClassified (nodes : Node seq) (classes : string []) outFile =
+        if File.Exists outFile then File.Delete outFile
+        if nodes = null || nodes.Count() = 0 || classes = null || classes.Length = 0 then failwith "Must supply non-empty classes and nodes arrays"
+        
+        let total = nodes.Count()
+        let output = List<string>()
+        let nodesClasses = nodes |> Seq.map2(fun cl n -> cl, n) classes
+        let accurate = 
+            nodesClasses 
+            |> Seq.filter(
+                fun (actual, expected) -> 
+                    if not(String.IsNullOrWhiteSpace(expected.Class)) then String.Compare(actual, expected.Class) = 0 else true)
+            |> Seq.length
+
+        let accuracy = String.Format("{0:0.###}", float(accurate) / float(total))
+
+        output.AddRange(
+            nodesClasses 
+            |> Seq.map (
+                fun (cl, n) -> 
+                    String(n |> Seq.fold(fun acc e -> acc + "\t" + e.ToString()) String.Empty |> Seq.skip 1 |> Seq.toArray) 
+                    + "\t" + (if cl = n.Class then "+" + "\t" + cl else cl))) 
+                    
+        separate output "Accuracy"
+        output.Add(accuracy)
+
+        File.WriteAllLines(outFile, output)
 
 

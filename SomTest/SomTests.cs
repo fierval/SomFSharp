@@ -292,7 +292,7 @@ namespace SomTest
             {
                 Directory.CreateDirectory(@"c:\temp");
             }
-            som.Save(20, @"c:\temp\res.txt");
+            som.Save(20, @"c:\temp\res.txt", false);
         }
 
 

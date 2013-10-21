@@ -45,12 +45,16 @@ let run (args : Dictionary<string, string>) =
             som.NormalizeInput(Normalization.Zscore)
             printfn "Normalized som using z-score normalization"
         som.Train epochs |> ignore
+
+        //let som1 = Som((height, width), fileName)
+        //som1.somMap <- som.somMap
+
         //som.SingleDimTrain som.InputNodes.[0]
         printfn "Finished training..."
         if som.ShouldClassify then
             printfn "Classifier will be trained..."
         printfn "Saving to: %s" outFile
-        som.Save epochs outFile
+        som.Save epochs outFile true
     | Normalize (height, width, inFile, outFile) ->
         if not (File.Exists inFile) then failwith "File does not exist: %s" inFile
         if File.Exists outFile then File.Delete outFile
@@ -71,7 +75,8 @@ let run (args : Dictionary<string, string>) =
         let somGpu = SomGpu((width, height), nodes)
 
         if File.Exists outFile then File.Delete outFile
-        somGpu.SaveClassified outFile
+        let classes = somGpu.Classify nodes
+        somGpu.SaveClassified nodes classes outFile
     |_ -> failwith "need to specify either \"t\" or \"r\" or \"n\" as the action" 
     0
 
