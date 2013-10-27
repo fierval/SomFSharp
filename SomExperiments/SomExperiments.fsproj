@@ -23,7 +23,8 @@
     <PlatformTarget>AnyCPU</PlatformTarget>
     <DocumentationFile>bin\Debug\Som.XML</DocumentationFile>
     <Prefer32Bit>true</Prefer32Bit>
-    <StartArguments>patents.txt</StartArguments>
+    <StartArguments>proteomicsPBMC_mod_map.txt proteomicsPBMC_mod.txt</StartArguments>
+    <StartWorkingDirectory>C:\Users\boris\Dropbox\Visual\snyderData</StartWorkingDirectory>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
     <DebugType>pdbonly</DebugType>
@@ -35,6 +36,8 @@
     <PlatformTarget>AnyCPU</PlatformTarget>
     <DocumentationFile>bin\Release\Som.XML</DocumentationFile>
     <Prefer32Bit>true</Prefer32Bit>
+    <StartArguments>proteomicsPBMC_mod_map.txt proteomicsPBMC_mod.txt</StartArguments>
+    <StartWorkingDirectory>C:\Users\boris\Dropbox\Visual\snyderData</StartWorkingDirectory>
   </PropertyGroup>
   <ItemGroup>
     <Reference Include="Alea.CUDA, Version=1.1.0.0, Culture=neutral, PublicKeyToken=ba52afc3c2e933d6" />
