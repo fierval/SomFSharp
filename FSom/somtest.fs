@@ -242,4 +242,33 @@ type SomGpuTest =
                     )
         distMapOut
 
-            
+    override this.DensityMatrix () =
+        let len = this.Height * this.Width
+        let radius = this.ParetoRadius
+        let nNodes = this.InputNodes.Count
+        let nodeLen = this.NodeLen
+
+        let nodes = this.InputNodes.SelectMany(fun (n: Node) -> n.AsEnumerable())
+        let map = this.toArray
+        let nodes = nodes.ToArray()
+        let denseMatrix = Array.zeroCreate len
+        let nt = min (this.DimX * this.DimY) len
+        let nBlocks = this.GetBlockDim len nt
+        
+        for block = 0 to nBlocks - 1 do
+            for thread = 0 to nt - 1 do
+                let i = block * nt + thread
+
+                if i < len then
+                    for n = 0 to nNodes - 1 do
+                        let mutable dist = 0.
+                        for k = 0 to nodeLen - 1 do
+                            dist <- dist + (nodes.[n*nodeLen + k] - map.[i * nodeLen + k]) * (nodes.[n*nodeLen + k] - map.[i * nodeLen + k])
+                        dist <- sqrt dist
+                        if dist < radius then
+                            denseMatrix.[i] <- denseMatrix.[i] + 1
+        let arr = 
+            Array2D.init this.Height this.Width 
+                (fun i j ->
+                    denseMatrix.[i * this.Height + j])
+        arr

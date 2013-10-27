@@ -57,7 +57,7 @@ type SomGpu(dims, nodes : Node seq) =
     override this.Train epochs =
         let worker = Engine.workers.DefaultWorker
         use pfuncm = worker.LoadPModule(this.pTrainSom)
-
+        printfn "starting to train on %d epochs" epochs
         this.somMap <- pfuncm.Invoke (this.InputNodes |> Seq.map (fun n -> n.ToArray()) |> Seq.toList) epochs
         |> this.fromArray
         this.somMap
@@ -113,3 +113,22 @@ type SomGpu(dims, nodes : Node seq) =
                 let x, y = this.toSomCoordinates m
                 this.somMap.[x, y].Class    
             )
+
+    override this.PairwiseDistance () =
+        let worker = Engine.workers.DefaultWorker
+        use pfuncm = worker.LoadPModule(this.pPairwiseDistance)
+
+        pfuncm.Invoke
+
+    override this.DensityMatrix () =
+        let worker = Engine.workers.DefaultWorker
+        use pfuncm = worker.LoadPModule(this.pDensityMatrix)
+
+        let density = pfuncm.Invoke
+        let arr = 
+            Array2D.init this.Height this.Width 
+                (fun i j ->
+                    density.[i * this.Height + j])
+        arr
+            
+            

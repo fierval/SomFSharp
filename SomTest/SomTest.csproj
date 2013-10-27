@@ -83,6 +83,7 @@
     <Compile Include="SomTests.cs" />
     <Compile Include="ReadFileTests.cs" />
     <Compile Include="SomGpuTests.cs" />
+    <Compile Include="EsomTests.cs" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\FSom\FSom.fsproj">
@@ -98,6 +99,10 @@
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Content>
     <Content Include="patents1.txt">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+    <Content Include="pathwayABI.txt" />
+    <Content Include="proteomicsPBMC_mod.txt">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Content>
   </ItemGroup>

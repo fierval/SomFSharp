@@ -3,6 +3,7 @@ open System.Linq
 open System.Collections.Generic
 open System
 open System.Diagnostics
+open System.IO
 
 let stopWatch = Stopwatch()
 
@@ -177,6 +178,42 @@ let bmuShortDistance (argv : string []) =
     let bmus = som1.GetBmuGpuUnified map nodes
     bmus
 
+let pairwise (argv : string []) =
+    let som = SomGpu((10, 30), argv.[0], 1)
+
+    for i = 1 to 3 do
+        tic()
+        let dist1 = som.PairwiseDistance()
+        printfn "Pairwise distance computed in: %10.3f ms" (toc())
+
+let density (argv : string []) = 
+    
+    let buildStringSeq height (arr : string [,]) =
+        seq {
+            for i = 0 to height - 1 do 
+                yield String (arr.[i..i, 0..] 
+                    |> Seq.cast<string> |> Seq.fold (fun st e -> st + "\t" + e) String.Empty |> Seq.skip 1 |> Seq.toArray)
+        }
+
+    let som, nodes = SomGpu.ReadTrainSom argv.[0] argv.[1] 1
+    let height, width = som |> Array2D.length1, som|> Array2D.length2
+    let somGpu = SomGpu((height, width), nodes)
+        
+    somGpu.somMap <- som
+    somGpu.NormalizeInput(Normalization.Zscore)
+
+    for i = 1 to 1 do
+        tic()
+        let dense = somGpu.DensityMatrix()
+        let strDensityMatrix = dense |> Array2D.map(fun e -> e.ToString()) |> buildStringSeq height
+
+        let distOutput = List<string>()
+        distOutput.AddRange strDensityMatrix
+        File.WriteAllLines("proteomicsPBMC_mod_map_dense_map.txt", distOutput)
+
+        printfn "Density matrix computed in: %10.3f ms" (toc())
+        printfn "> 0: %d" (dense |> Seq.cast<int> |> Seq.filter (fun e -> e > 0) |> Seq.length)
+
 [<EntryPoint>]
 let tests argv =
     //classifyTrainTest argv
@@ -187,5 +224,7 @@ let tests argv =
     //findDistance argv
     //shortMapTest argv
     //timeShortMapTest argv
-    bmuShortDistance argv |> ignore
+    //bmuShortDistance argv |> ignore
+    //pairwise argv
+    density argv
     0

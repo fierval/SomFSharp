@@ -142,7 +142,7 @@ type Som(dims : int * int, nodes : Node seq) as this =
         nodes
 
     static member ParseSom (lines : string []) nodeLen =
-        Array2D.init (lines.Length) (lines.[0].Length / nodeLen) 
+        Array2D.init (lines.Length) (lines.[0].Split('\t').Length / nodeLen) 
             (fun i j ->
                 let entries = lines.[i].Split('\t')
                 Node(Array.init nodeLen (fun k -> Double.Parse(entries.[j * nodeLen + k])))
@@ -158,13 +158,13 @@ type Som(dims : int * int, nodes : Node seq) as this =
                 som.[x, y].Class <- c
             )
 
-    static member ReadTestSom somFileName nodesFileName = 
+    static member ReadTestSom somFileName nodesFileName header = 
         if not (File.Exists somFileName) then failwith ("file does not exist: " + somFileName)
         if not (File.Exists nodesFileName) then failwith ("file does not exist: " + nodesFileName)
 
         let seps = [|' '; '\t'|]
         let lines = File.ReadAllLines somFileName
-        let nodesLines = File.ReadAllLines nodesFileName
+        let nodesLines = (File.ReadAllLines nodesFileName).Skip(header).ToArray()
         
         let nodes = Som.ParseNodes nodesLines
         let nodeLen = nodes.[0].Count()
@@ -179,6 +179,24 @@ type Som(dims : int * int, nodes : Node seq) as this =
 
         som, nodes
 
+    static member ReadTrainSom somFileName nodesFileName header =
+        if not (File.Exists somFileName) then failwith ("file does not exist: " + somFileName)
+        if not (File.Exists nodesFileName) then failwith ("file does not exist: " + nodesFileName)
+
+        let seps = [|' '; '\t'|]
+        let lines = File.ReadAllLines somFileName
+        let nodesLines = (File.ReadAllLines nodesFileName).Skip(header).ToArray()
+        
+        let nodes = Som.ParseNodes nodesLines
+        let nodeLen = nodes.[0].Count()
+
+        let weightLines = lines.SkipWhile(fun l -> l <> "Trained Weights")
+        if weightLines.Count() = 0 then failwith "Did not find trained weights"
+        let weightLines = weightLines.Skip(2).TakeWhile(fun l -> l <> String.Empty).ToArray()
+        let som = Som.ParseSom weightLines nodeLen
+        
+        som, nodes
+        
     static member Read fileName header =
         if not (File.Exists fileName) then failwith ("file does not exist: " + fileName)
 
@@ -186,10 +204,11 @@ type Som(dims : int * int, nodes : Node seq) as this =
         let lines = if header > 0 then (File.ReadAllLines fileName).Skip(header).ToArray() else File.ReadAllLines fileName
         Som.ParseNodes lines
 
-    new (dim : int * int, fileName : string, ?header) as this = 
+
+    new (dim : int * int, fileName : string, ?header) = 
         let header = defaultArg header 0
         Som(dim, Som.Read fileName header) 
-        then this.ShouldClassify <- this.InputNodes.First(fun n-> not (String.IsNullOrEmpty(n.Class))) <> Unchecked.defaultof<Node>
+        
 
     member this.ModifyTrainRule x epochs =
         nrule0 * exp(-10.0 * (x * x) / float(epochs * epochs))
@@ -200,8 +219,7 @@ type Som(dims : int * int, nodes : Node seq) as this =
         x, y
 
     member this.ShouldClassify 
-        with get() = shouldClassify
-        and set value = shouldClassify <- value
+        with get() = this.InputNodes.Where(fun (n : Node) -> not (String.IsNullOrEmpty(n.Class))).Count() > 0
     
     member this.toArray = flattenSom this.somMap
 
@@ -409,15 +427,29 @@ type Som(dims : int * int, nodes : Node seq) as this =
         let distMap = this.DistanceMap()
         let strDistMap = distMap |> Array2D.map(fun e -> e.ToString()) |> buildStringSeq
 
-        separate output "Distance Map"
-        // build the 2D array of distance map
+        // distance map (U-matrix)
         output.AddRange strDistMap
         if distClassSeparate then 
             let distOutput = List<string>()
             distOutput.AddRange strDistMap
             File.WriteAllLines(insertIntoFileName fileName "_dist_map", distOutput)
+        else
+            separate output "Distance Map"
+            output.AddRange(strDistMap)
 
+        // density matrix (P-matrix)
+        let denseMap = this.DensityMatrix()
+        let strDensityMatrix = denseMap |> Array2D.map(fun e -> e.ToString()) |> buildStringSeq
 
+        if distClassSeparate then 
+            let distOutput = List<string>()
+            distOutput.AddRange strDensityMatrix
+            File.WriteAllLines(insertIntoFileName fileName "_dense_map", distOutput)
+        else
+            separate output "Density Matrix"
+            output.AddRange(strDensityMatrix)
+
+        // classification
         if this.ShouldClassify then 
             separate output "Classes"
 
@@ -470,4 +502,44 @@ type Som(dims : int * int, nodes : Node seq) as this =
 
         File.WriteAllLines(outFile, output)
 
+    abstract PairwiseDistance : unit -> float []
+    default this.PairwiseDistance () =
+        let nodes = if this.InputNodes.Count > 10000 then this.InputNodes.Take(10000).ToList() else this.InputNodes
+        let len = nodes.Count
+        let distMatrix = Array.zeroCreate (len * (len - 1) / 2)
 
+        Parallel.ForEach(nodes, 
+            (fun node st (i : int64) -> 
+                let i = int i
+                for j =  i + 1 to nodes.Count - 1 do
+                    distMatrix.[i * nodes.Count + j - (i + 1) * (i + 2) / 2] <- getDistanceEuclidian node this.InputNodes.[j]
+            )
+        ) |> ignore
+
+        distMatrix
+
+    member this.ParetoRadius =
+        let distMatrix = this.PairwiseDistance()
+        let percentile = Percentile(distMatrix)
+        let paretoPercentile = percentile.Compute(0.2013)
+        paretoPercentile //* 0.127417
+
+    
+    abstract DensityMatrix : unit -> int [,]
+    default this.DensityMatrix () =
+        let radius = this.ParetoRadius
+        let densityMatrix = Array2D.zeroCreate this.Height this.Width
+
+        Parallel.For(0, this.Height, 
+            (
+                fun i st ->
+                    for j = 0 to this.Width - 1 do
+                        let neuron = this.somMap.[i, j]
+                        this.InputNodes 
+                        |> Seq.iter (fun node ->
+                            if getDistanceEuclidian neuron node < radius then
+                                densityMatrix.[i, j] <- densityMatrix.[i, j] + 1)
+            )
+        ) |> ignore
+
+        densityMatrix

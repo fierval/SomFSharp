@@ -469,3 +469,89 @@ type SomGpuBase(dims, nodes : Node seq) =
 
                     )
             }
+
+        member this.pPairwiseDistance = 
+            cuda {
+                let! pairwiseKernel = 
+                    <@  fun len nodeLen
+                            (nodes : DevicePtr<float>)
+                            (dist : DevicePtr<float>)
+                            ->    
+
+                            let x = blockIdx.x * blockDim.x + threadIdx.x
+                            let y = blockIdx.y * blockDim.y + threadIdx.y
+
+                            if y > x then
+                                let i = x * nodeLen
+                                let j = y * nodeLen
+                                let mutable distance = 0.
+                                for k = i to i + nodeLen - 1 do
+                                    let l = j + k - i
+                                    distance <- distance + (nodes.[k] - nodes.[l]) * (nodes.[k] - nodes.[l])
+                                dist.[x * len + y - (x + 1) * (x + 2) / 2] <- sqrt distance
+                    @> 
+
+                    |> defineKernelFuncWithName "paiwise_distance"
+                return PFunc(
+                    fun
+                        (m : Module) ->
+                        let pdist = pairwiseKernel.Apply m
+                        let nodes = if this.InputNodes.Count > 10000 then this.InputNodes.Take(10000).ToList() else this.InputNodes
+
+                        let len = nodes.Count
+                        let nodeLen = nodes.[0].Count()
+
+                        let nodes = nodes.SelectMany(fun (n: Node) -> n.AsEnumerable())
+                        let dNodes = m.Worker.Malloc(nodes.ToArray())
+                        let dDist = m.Worker.Malloc<float>(len * (len - 1) / 2)
+                        let nt = dim3(min this.DimX len, min this.DimY len)
+                        let nBlocks = dim3(this.GetBlockDim len nt.x, this.GetBlockDim len nt.y)
+                        let lp = LaunchParam(nBlocks, nt)
+
+                        pdist.Launch lp len nodeLen dNodes.Ptr dDist.Ptr
+                        dDist.ToHost()
+                )
+            }
+
+        member this.pDensityMatrix =
+            cuda {
+                let! kernel =
+                    <@ 
+                        fun len nodeLen nNodes radius
+                            (map : DevicePtr<float>)
+                            (nodes : DevicePtr<float>)
+                            (denseMatrix : DevicePtr<int>)
+                            ->
+
+                            let i = blockIdx.x * blockDim.x + threadIdx.x
+
+                            if i < len then
+                                for n = 0 to nNodes - 1 do
+                                    let mutable dist = 0.
+                                    for k = 0 to nodeLen - 1 do
+                                        dist <- dist + (nodes.[n * nodeLen + k] - map.[i * nodeLen + k]) * (nodes.[n * nodeLen + k] - map.[i * nodeLen + k])
+                                    dist <- sqrt dist
+                                    if dist < radius then
+                                        denseMatrix.[i] <- denseMatrix.[i] + 1
+                                        
+                    @> |> defineKernelFuncWithName "density_matrix"
+                return PFunc(
+                    fun (m : Module)
+                         ->
+
+                    let pdense = kernel.Apply m
+                    let len = this.Height * this.Width
+                    let radius = this.ParetoRadius
+
+                    let nodes = this.InputNodes.SelectMany(fun (n: Node) -> n.AsEnumerable())
+                    let dMap = m.Worker.Malloc(this.toArray)
+                    let dNodes = m.Worker.Malloc(nodes.ToArray())
+                    let dDense = m.Worker.Malloc(Array.zeroCreate len)
+                    let nt = min (this.DimX * this.DimY) len
+                    let nBlocks = this.GetBlockDim len nt
+                    let lp = LaunchParam(nBlocks, nt)
+
+                    pdense.Launch lp len this.NodeLen this.InputNodes.Count radius dMap.Ptr dNodes.Ptr dDense.Ptr
+                    dDense.ToHost()
+                )
+            }

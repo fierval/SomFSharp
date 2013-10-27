@@ -21,7 +21,8 @@ let (|Test|_|) (args : Dictionary<string, string>) =
     let keys = args.Keys
     if (keys.Contains "r") then
         let dms = dims()
-        Some(args.["if"].Trim(), args.["tf"].Trim(), args.["of"].Trim())
+        let header = if keys.Contains "header" then Int32.Parse(args.["header"]) else 0
+        Some(args.["if"].Trim(), args.["tf"].Trim(), args.["of"].Trim(), header)
     else 
         None
 
@@ -67,13 +68,15 @@ let run (args : Dictionary<string, string>) =
             out <- node |> Seq.fold(fun st v -> st + "\t" + v.ToString()) out 
             output.Add(out)
         File.WriteAllLines(outFile, output)
-    | Test (trainedFile, testDataFile, outFile) ->
+    | Test (trainedFile, testDataFile, outFile, header) ->
         if not (File.Exists trainedFile) || (not (File.Exists testDataFile)) then failwith "input file(s) missing"
         if String.IsNullOrWhiteSpace(outFile) || String.IsNullOrWhiteSpace(testDataFile) || String.IsNullOrWhiteSpace(trainedFile) then failwith "File name cannot be empty"
 
-        let som, nodes = Som.ReadTestSom trainedFile testDataFile
-        let width, height = som |> Array2D.length1, som|> Array2D.length2
-        let somGpu = SomGpu((width, height), nodes)
+        let som, nodes = Som.ReadTestSom trainedFile testDataFile header
+        let height, width = som |> Array2D.length1, som|> Array2D.length2
+        let somGpu = SomGpu((height, width), nodes)
+        
+        somGpu.somMap <- som
 
         if File.Exists outFile then File.Delete outFile
         let classes = somGpu.Classify nodes
