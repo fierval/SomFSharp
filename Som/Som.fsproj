@@ -36,7 +36,7 @@
     <PlatformTarget>AnyCPU</PlatformTarget>
     <DocumentationFile>bin\Release\Som.XML</DocumentationFile>
     <Prefer32Bit>true</Prefer32Bit>
-    <StartArguments>-t -n -d "150,150" -e 300 -if proteomicsPBMC_mod.txt -of proteomicsPBMC_mod_map.txt -header 1</StartArguments>
+    <StartArguments>-t -n -d "150,150" -e 500 -if proteomicsPBMC_mod.txt -of proteomicsPBMC_mod_map.txt -header 1</StartArguments>
     <StartWorkingDirectory>C:\Users\boris\Dropbox\Visual\snyderData\</StartWorkingDirectory>
   </PropertyGroup>
   <PropertyGroup>

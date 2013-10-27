@@ -449,6 +449,18 @@ type Som(dims : int * int, nodes : Node seq) as this =
             separate output "Density Matrix"
             output.AddRange(strDensityMatrix)
 
+        // U*-matrix
+        let uStarMatrix = this.UStarMatrix distMap denseMap
+        let strUStarMatrix = denseMap |> Array2D.map(fun e -> e.ToString()) |> buildStringSeq
+
+        if distClassSeparate then 
+            let distOutput = List<string>()
+            distOutput.AddRange strUStarMatrix
+            File.WriteAllLines(insertIntoFileName fileName "_ustar_map", distOutput)
+        else
+            separate output "U* Matrix"
+            output.AddRange(strDensityMatrix)
+
         // classification
         if this.ShouldClassify then 
             separate output "Classes"
@@ -543,3 +555,20 @@ type Som(dims : int * int, nodes : Node seq) as this =
         ) |> ignore
 
         densityMatrix
+
+    member this.ComputeUMatrixScalingFactors distanceMatrix densityMatrix =
+        let seqP = densityMatrix |> Seq.cast<int> |> Seq.map (fun e -> float e)
+        let vec =  DenseVector.ofSeq(seqP)
+        let minP = vec.Min()
+        let avgP =vec.Average()
+        let divisor = avgP - minP
+        divisor, minP
+
+    abstract UStarMatrix : float [,] -> int [,] -> float [,]
+    default this.UStarMatrix distanceMatrix densityMatrix = 
+        let divisor, min = this.ComputeUMatrixScalingFactors distanceMatrix densityMatrix
+
+        let res =
+            distanceMatrix |> Array2D.mapi(fun i j d -> d * (float densityMatrix.[i, j] - min) / divisor)
+        res
+        
