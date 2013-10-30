@@ -123,8 +123,9 @@ type SomGpu(dims, nodes : Node seq) =
     override this.DensityMatrix () =
         let worker = Engine.workers.DefaultWorker
         use pfuncm = worker.LoadPModule(this.pDensityMatrix)
+        let radius = this.ParetoRadius
 
-        let density = pfuncm.Invoke
+        let density = pfuncm.Invoke radius
         let arr = 
             Array2D.init this.Height this.Width 
                 (fun i j ->

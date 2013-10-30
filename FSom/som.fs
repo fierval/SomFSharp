@@ -451,7 +451,7 @@ type Som(dims : int * int, nodes : Node seq) as this =
 
         // U*-matrix
         let uStarMatrix = this.UStarMatrix distMap denseMap
-        let strUStarMatrix = denseMap |> Array2D.map(fun e -> e.ToString()) |> buildStringSeq
+        let strUStarMatrix = uStarMatrix |> Array2D.map(fun e -> e.ToString()) |> buildStringSeq
 
         if distClassSeparate then 
             let distOutput = List<string>()
@@ -516,7 +516,7 @@ type Som(dims : int * int, nodes : Node seq) as this =
 
     abstract PairwiseDistance : unit -> float []
     default this.PairwiseDistance () =
-        let nodes = if this.InputNodes.Count > 10000 then this.InputNodes.Take(10000).ToList() else this.InputNodes
+        let nodes = if this.InputNodes.Count > 1000 then this.InputNodes.Take(1000).ToList() else this.InputNodes
         let len = nodes.Count
         let distMatrix = Array.zeroCreate (len * (len - 1) / 2)
 

@@ -214,6 +214,32 @@ let density (argv : string []) =
         printfn "Density matrix computed in: %10.3f ms" (toc())
         printfn "> 0: %d" (dense |> Seq.cast<int> |> Seq.filter (fun e -> e > 0) |> Seq.length)
 
+let ustar (argv : string []) =
+    let buildStringSeq height (arr : string [,]) =
+        seq {
+            for i = 0 to height - 1 do 
+                yield String (arr.[i..i, 0..] 
+                    |> Seq.cast<string> |> Seq.fold (fun st e -> st + "\t" + e) String.Empty |> Seq.skip 1 |> Seq.toArray)
+        }
+
+    let som, nodes = SomGpu.ReadTrainSom argv.[0] argv.[1] 1
+    let height, width = som |> Array2D.length1, som|> Array2D.length2
+    let somGpu = SomGpu((height, width), nodes)
+    tic()    
+    somGpu.somMap <- som
+    somGpu.NormalizeInput(Normalization.Zscore)
+    
+    let dense = somGpu.DensityMatrix()
+    let dist = somGpu.DistanceMap()
+    let uMatrix = somGpu.UStarMatrix dist dense |> Array2D.map(fun e -> e.ToString()) |> buildStringSeq height
+    let distOutput = List<string>()
+    distOutput.AddRange uMatrix
+    File.WriteAllLines("proteomicsPBMC_mod_map_ustar_map.txt", distOutput)
+
+    printfn "U*-matrix computed in: %10.3f ms" (toc())
+
+
+
 [<EntryPoint>]
 let tests argv =
     //classifyTrainTest argv
@@ -226,5 +252,6 @@ let tests argv =
     //timeShortMapTest argv
     //bmuShortDistance argv |> ignore
     //pairwise argv
-    density argv
+    //density argv
+    ustar argv
     0

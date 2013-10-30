@@ -502,8 +502,8 @@ type SomGpuBase(dims, nodes : Node seq) =
                         let nodeLen = nodes.[0].Count()
 
                         let nodes = nodes.SelectMany(fun (n: Node) -> n.AsEnumerable())
-                        let dNodes = m.Worker.Malloc(nodes.ToArray())
-                        let dDist = m.Worker.Malloc<float>(len * (len - 1) / 2)
+                        use dNodes = m.Worker.Malloc(nodes.ToArray())
+                        use dDist = m.Worker.Malloc<float>(len * (len - 1) / 2)
                         let nt = dim3(min this.DimX len, min this.DimY len)
                         let nBlocks = dim3(this.GetBlockDim len nt.x, this.GetBlockDim len nt.y)
                         let lp = LaunchParam(nBlocks, nt)
@@ -529,7 +529,7 @@ type SomGpuBase(dims, nodes : Node seq) =
                                 for n = 0 to nNodes - 1 do
                                     let mutable dist = 0.
                                     for k = 0 to nodeLen - 1 do
-                                        dist <- dist + (nodes.[n * nodeLen + k] - map.[i * nodeLen + k]) * (nodes.[n * nodeLen + k] - map.[i * nodeLen + k])
+                                        dist <- dist + (nodes.[n*nodeLen + k] - map.[i * nodeLen + k]) * (nodes.[n*nodeLen + k] - map.[i * nodeLen + k])
                                     dist <- sqrt dist
                                     if dist < radius then
                                         denseMatrix.[i] <- denseMatrix.[i] + 1
@@ -537,21 +537,29 @@ type SomGpuBase(dims, nodes : Node seq) =
                     @> |> defineKernelFuncWithName "density_matrix"
                 return PFunc(
                     fun (m : Module)
+                        radius
                          ->
 
                     let pdense = kernel.Apply m
                     let len = this.Height * this.Width
-                    let radius = this.ParetoRadius
 
-                    let nodes = this.InputNodes.SelectMany(fun (n: Node) -> n.AsEnumerable())
-                    let dMap = m.Worker.Malloc(this.toArray)
-                    let dNodes = m.Worker.Malloc(nodes.ToArray())
-                    let dDense = m.Worker.Malloc(Array.zeroCreate len)
+                    let nodes = this.InputNodes.SelectMany(fun (n: Node) -> n.AsEnumerable()).ToArray()
+                    use dMap = m.Worker.Malloc(this.toArray)
+                    use dNodes = m.Worker.Malloc(nodes)
+                    use dDense = m.Worker.Malloc(Array.zeroCreate len)
                     let nt = min (this.DimX * this.DimY) len
                     let nBlocks = this.GetBlockDim len nt
                     let lp = LaunchParam(nBlocks, nt)
 
-                    pdense.Launch lp len this.NodeLen this.InputNodes.Count radius dMap.Ptr dNodes.Ptr dDense.Ptr
+                    let maxNodesPerRun = 15000
+
+                    let iter = (this.InputNodes.Count + maxNodesPerRun) / maxNodesPerRun
+                    let mutable prevNNodes = 0
+                    for i = 1 to iter do
+                        let nNodes = if this.InputNodes.Count - i * maxNodesPerRun < 0 then this.InputNodes.Count % maxNodesPerRun else maxNodesPerRun
+                        pdense.Launch lp len this.NodeLen nNodes radius dMap.Ptr (dNodes.Ptr + i * prevNNodes) dDense.Ptr
+                        prevNNodes <- nNodes
+                        dDense.ToHost() |> ignore
                     dDense.ToHost()
                 )
             }

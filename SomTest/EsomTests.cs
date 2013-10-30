@@ -50,10 +50,10 @@ namespace SomTest
 
         [TestMethod]
         [TestCategory("PMatrix")]
-        [DeploymentItem("patents.txt")]
+        [DeploymentItem("igrisk_v8_1.txt")]
         public void PMatrixTest()
         {
-            var som = new Som(new Tuple<int, int>(3, 3), "patents.txt", new FSharpOption<int>(0));
+            var som = new SomGpuTest(new Tuple<int, int>(250, 250), "igrisk_v8_1.txt", new FSharpOption<int>(1));
             som.NormalizeInput(Normalization.Zscore);
             var density = som.DensityMatrix();
             Assert.IsNotNull(density);

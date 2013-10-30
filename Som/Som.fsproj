@@ -23,8 +23,8 @@
     <PlatformTarget>AnyCPU</PlatformTarget>
     <DocumentationFile>bin\Debug\Som.XML</DocumentationFile>
     <Prefer32Bit>true</Prefer32Bit>
-    <StartArguments>-t -n -d "150,150" -e 200 -if proteomicsPBMC_mod.txt -of proteomicsPBMC_mod_map.txt -header 1</StartArguments>
-    <StartWorkingDirectory>C:\Users\boris\Dropbox\Visual\snyderData</StartWorkingDirectory>
+    <StartArguments>-t -n -d "250,250" -e 1 -if igrisk_v8_1.txt -of igrisk_v8_som.txt -header 1</StartArguments>
+    <StartWorkingDirectory>C:\Users\boris\Dropbox\Algorithms\Visualizations\som\data</StartWorkingDirectory>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
     <DebugType>pdbonly</DebugType>

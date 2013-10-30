@@ -95,6 +95,9 @@
     <None Include="packages.config" />
   </ItemGroup>
   <ItemGroup>
+    <Content Include="igrisk_v8_1.txt">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
     <Content Include="patents.txt">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Content>
