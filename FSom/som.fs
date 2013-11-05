@@ -428,7 +428,6 @@ type Som(dims : int * int, nodes : Node seq) as this =
         let strDistMap = distMap |> Array2D.map(fun e -> e.ToString()) |> buildStringSeq
 
         // distance map (U-matrix)
-        output.AddRange strDistMap
         if distClassSeparate then 
             let distOutput = List<string>()
             distOutput.AddRange strDistMap

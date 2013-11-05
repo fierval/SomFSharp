@@ -52,7 +52,7 @@ module watershed =
             let neighbors = List<int*int>()
             for i = -1 to 1 do
                 for j = -1 to 1 do
-                    if i <> 0 && j <> 0 && i + row > 0 && j + col > 0 && i + row < height && j + col < width then
+                    if i <> 0 && j <> 0 && i + row >= 0 && j + col >= 0 && i + row < height && j + col < width then
                         neighbors.Add(row + i, col + j)
             neighbors
 
