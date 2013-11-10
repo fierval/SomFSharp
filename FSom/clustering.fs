@@ -122,7 +122,7 @@ module clustering =
                     (fun i j -> ascendOrDescend (Point(i, j)) Direction.Descend)
             this.Immersion <-
                 Array2D.init height width
-                    (fun i j -> ascendOrDescend descent.[i,j] Direction.Descend)
+                    (fun i j -> ascendOrDescend descent.[i,j] Direction.Ascend)
                                   
     type Watershed (uMatrix: float [,]) =
         let uMatrix = uMatrix
