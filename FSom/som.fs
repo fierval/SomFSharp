@@ -11,7 +11,6 @@ open MathNet.Numerics.LinearAlgebra.Double
 open System.Threading
 open System.Threading.Tasks
 open System.Collections.Concurrent
-open System.Linq
 open Microsoft.FSharp.Collections
 open System.IO
 
@@ -200,10 +199,15 @@ type Som(dims : int * int, nodes : Node seq) as this =
     static member Read fileName header =
         if not (File.Exists fileName) then failwith ("file does not exist: " + fileName)
 
-
         let lines = if header > 0 then (File.ReadAllLines fileName).Skip(header).ToArray() else File.ReadAllLines fileName
         Som.ParseNodes lines
 
+    /// Read a matrix file. For testing.
+    static member ReadMatrix fileName =
+        if not (File.Exists fileName) then failwith ("file does not exist: " + fileName)
+        let lines = File.ReadAllLines fileName |> Array.map (fun e -> e.Split('\t'))
+
+        Array2D.init lines.Length (lines.First().Count()) (fun i j -> Double.Parse(lines.[i].[j]))
 
     new (dim : int * int, fileName : string, ?header) = 
         let header = defaultArg header 0
@@ -402,6 +406,66 @@ type Som(dims : int * int, nodes : Node seq) as this =
             )
         |> Seq.toArray
 
+    member this.SaveSom epochs fileName =
+        let saveWeights (arr : Node [,]) = 
+            Array2D.init this.Height (this.Width * this.NodeLen )
+                (fun i j ->
+                    arr.[i, j / this.NodeLen].[ j % this.NodeLen]
+                )
+                 
+        let insertIntoFileName fileName insert =
+            let path, name, ext = Path.GetDirectoryName(fileName), Path.GetFileNameWithoutExtension(fileName) + insert, Path.GetExtension(fileName)
+            Path.Combine(path, name + ext)
+        
+        // 2D weights. Weights are calc'ed first before classifier has mucked them up
+        let weights = saveWeights this.somMap
+
+        //U-matrix
+        let distMap = this.DistanceMap()
+        let distMapFile = insertIntoFileName fileName "_dist"
+
+        //P-matrix
+        let denseMap = this.DensityMatrix()
+        let denseMapFile = insertIntoFileName fileName "_dense"
+
+        //U*-matrix
+        let uStarMatrix = this.UStarMatrix distMap denseMap
+        let uStarMatrixFile = insertIntoFileName fileName "_ustar"
+
+        // classification
+        let classes = 
+            if this.ShouldClassify then 
+                this.TrainClassifier epochs
+                this.somMap |> Array2D.map (fun node -> node.Class)
+            else
+                Array2D.init 0 0 (fun _ _ -> String.Empty)
+        
+        som_saver fileName {
+            add "Trained Weights"
+            write weights
+            return "Done"
+        } |> ignore
+
+        som_saver distMapFile {
+            write distMap
+        } |> ignore
+
+        som_saver denseMapFile {
+            write denseMap
+        } |> ignore
+
+        som_saver uStarMatrixFile {
+            write uStarMatrix
+        } |> ignore
+
+        if this.ShouldClassify then
+            let classesFile = insertIntoFileName fileName "_classes"
+
+            som_saver classesFile {
+                write classes
+            } |> ignore
+
+        
     // save to file. if distClassSeparate = true
     // saves distance map and class map to separate files
     member this.Save epochs fileName distClassSeparate =

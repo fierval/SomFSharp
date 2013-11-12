@@ -75,6 +75,7 @@
     <Compile Include="Arguments.fs" />
     <Compile Include="node.fs" />
     <Compile Include="distance.fs" />
+    <Compile Include="SomSaverBuilder.fs" />
     <Compile Include="som.fs" />
     <Compile Include="somgpubase.fs" />
     <Compile Include="somgpu.fs" />
