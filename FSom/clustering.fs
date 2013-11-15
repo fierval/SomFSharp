@@ -203,5 +203,6 @@ module Clustering =
                     fun kvp -> 
                         let points = kvp.Value
                         points |> Seq.iter (fun p -> processShed (Point(p)))
-            )
+            ) |> ignore
    
+        member this.Labels = labels

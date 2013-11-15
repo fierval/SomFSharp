@@ -24,5 +24,18 @@ namespace SomTest
             ascentDescent.Immerse();
             Assert.IsNotNull(ascentDescent.Immersion);
         }
+
+        [TestMethod]
+        [TestCategory("Clustering")]
+        [DeploymentItem("res_ustar.txt")]
+        public void WatershedTest()
+        {
+            var ustar = Som.ReadMatrix("res_ustar.txt", new Func<string, double>(double.Parse));
+
+            var waterhsed = new Clustering.Watershed(ustar);
+            waterhsed.CreateWatersheds();
+            Assert.IsNotNull(waterhsed.Labels);
+        }
+
     }
 }

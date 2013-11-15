@@ -4,6 +4,7 @@ open System
 open System.Linq
 open System.Collections.Generic
 open Alea.CUDA
+open Alea.CUDA.Utilities
 open System.Diagnostics
 open System.Threading
 open System.Threading.Tasks
@@ -34,31 +35,29 @@ type SomGpu(dims, nodes : Node seq) =
         this.somMap
        
     member this.GetBmuGpu (nodes : Node seq) =
-        let worker = Engine.workers.DefaultWorker
-        use pfuncm = worker.LoadPModule(this.pTestBmu)
+        use pfuncm = this.pTestBmu |> Compiler.load Worker.Default
 
-        let mins = pfuncm.Invoke this.asArray (nodes |> Seq.map (fun n -> n.ToArray()) |> Seq.toList)
+        let mins = pfuncm.Run this.asArray (nodes |> Seq.map (fun n -> n.ToArray()) |> Seq.toList)
         mins
 
     member this.GetBmuGpuUnified (map : float []) (nodes : Node seq) =
-        let worker = Engine.workers.DefaultWorker
-        use pfuncm = worker.LoadPModule(this.pTestUnifiedBmu)
+        use pfuncm = this.pTestUnifiedBmu |> Compiler.load Worker.Default
 
-        let mins = pfuncm.Invoke map (nodes |> Seq.map (fun n -> n.ToArray()) |> Seq.toList)
+        let mins = pfuncm.Run map (nodes |> Seq.map (fun n -> n.ToArray()) |> Seq.toList)
         mins
 
     member this.GetBmuGpuShortMap (nodes : Node seq) =
-        let worker = Engine.workers.DefaultWorker
-        use pfuncm = worker.LoadPModule(this.pTestDistShortMap)
+        use pfuncm = this.pTestDistShortMap |> Compiler.load Worker.Default
 
-        let mins = pfuncm.Invoke this.asArray (nodes |> Seq.map (fun n -> n.ToArray()) |> Seq.toList)
+        let mins = pfuncm.Run this.asArray (nodes |> Seq.map (fun n -> n.ToArray()) |> Seq.toList)
         mins
                             
     override this.Train epochs =
-        let worker = Engine.workers.DefaultWorker
-        use pfuncm = worker.LoadPModule(this.pTrainSom)
+        use pfuncm = this.pTrainSom |> Compiler.load Worker.Default
+
         printfn "starting to train on %d epochs" epochs
-        this.somMap <- pfuncm.Invoke (this.InputNodes |> Seq.map (fun n -> n.ToArray()) |> Seq.toList) epochs
+        
+        this.somMap <- pfuncm.Run (this.InputNodes |> Seq.map (fun n -> n.ToArray()) |> Seq.toList) epochs
         |> this.fromArray
         this.somMap
 
@@ -84,17 +83,15 @@ type SomGpu(dims, nodes : Node seq) =
 
     override this.TrainClassifier epochs =
         this.InitClasses()
-        let worker = Engine.workers.DefaultWorker
-        use pfuncm = worker.LoadPModule(this.pTrainClassifier)
+        use pfuncm = this.pTrainClassifier |> Compiler.load Worker.Default
     
-        pfuncm.Invoke epochs
+        pfuncm.Run epochs
 
 
     override this.DistanceMap () =
-        let worker = Engine.workers.DefaultWorker
-        use pfuncm = worker.LoadPModule(this.pDistanceMap)
+        use pfuncm = this.pDistanceMap |> Compiler.load Worker.Default
 
-        let map = pfuncm.Invoke
+        let map = pfuncm.Run ()
 
         // convert the single-dimensional map to two dimensions
         let distMap = 
@@ -115,17 +112,15 @@ type SomGpu(dims, nodes : Node seq) =
             )
 
     override this.PairwiseDistance () =
-        let worker = Engine.workers.DefaultWorker
-        use pfuncm = worker.LoadPModule(this.pPairwiseDistance)
+        use pfuncm = this.pPairwiseDistance |> Compiler.load Worker.Default
 
-        pfuncm.Invoke
+        pfuncm.Run ()
 
     override this.DensityMatrix () =
-        let worker = Engine.workers.DefaultWorker
-        use pfuncm = worker.LoadPModule(this.pDensityMatrix)
+        use pfuncm = this.pDensityMatrix |> Compiler.load Worker.Default
         let radius = this.ParetoRadius
 
-        let density = pfuncm.Invoke radius
+        let density = pfuncm.Run radius
         let arr = 
             Array2D.init this.Height this.Width 
                 (fun i j ->

@@ -247,11 +247,11 @@ let tests argv =
     //for i = 0 to 10 do
     //mainBmuTest argv
     //main argv
-    //findDistance argv
+    findDistance argv
     //shortMapTest argv
     //timeShortMapTest argv
     //bmuShortDistance argv |> ignore
     //pairwise argv
     //density argv
-    ustar argv
+    //ustar argv
     0
