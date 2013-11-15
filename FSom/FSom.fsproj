@@ -80,8 +80,8 @@
     <Compile Include="somgpubase.fs" />
     <Compile Include="somgpu.fs" />
     <Compile Include="somtest.fs" />
-    <None Include="packages.config" />
     <Compile Include="clustering.fs" />
+    <None Include="packages.config" />
   </ItemGroup>
   <ItemGroup>
     <Reference Include="Alea.CUDA, Version=1.1.0.0, Culture=neutral, PublicKeyToken=ba52afc3c2e933d6" />

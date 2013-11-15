@@ -203,11 +203,11 @@ type Som(dims : int * int, nodes : Node seq) as this =
         Som.ParseNodes lines
 
     /// Read a matrix file. For testing.
-    static member ReadMatrix fileName =
+    static member ReadMatrix fileName (parse : Func<string, 'a>) =
         if not (File.Exists fileName) then failwith ("file does not exist: " + fileName)
         let lines = File.ReadAllLines fileName |> Array.map (fun e -> e.Split('\t'))
 
-        Array2D.init lines.Length (lines.First().Count()) (fun i j -> Double.Parse(lines.[i].[j]))
+        Array2D.init lines.Length (lines.First().Count()) (fun i j -> parse.Invoke(lines.[i].[j]))
 
     new (dim : int * int, fileName : string, ?header) = 
         let header = defaultArg header 0
@@ -406,7 +406,7 @@ type Som(dims : int * int, nodes : Node seq) as this =
             )
         |> Seq.toArray
 
-    member this.SaveSom epochs fileName =
+    member this.Save epochs fileName =
         let saveWeights (arr : Node [,]) = 
             Array2D.init this.Height (this.Width * this.NodeLen )
                 (fun i j ->
@@ -440,115 +440,36 @@ type Som(dims : int * int, nodes : Node seq) as this =
             else
                 Array2D.init 0 0 (fun _ _ -> String.Empty)
         
-        som_saver fileName {
+        saver fileName {
             add "Trained Weights"
             write weights
-            return "Done"
+            commit
         } |> ignore
 
-        som_saver distMapFile {
+        saver distMapFile {
             write distMap
+            commit
         } |> ignore
 
-        som_saver denseMapFile {
+        saver denseMapFile {
             write denseMap
+            commit
         } |> ignore
 
-        som_saver uStarMatrixFile {
+        saver uStarMatrixFile {
             write uStarMatrix
+            commit
         } |> ignore
 
         if this.ShouldClassify then
             let classesFile = insertIntoFileName fileName "_classes"
 
-            som_saver classesFile {
+            saver classesFile {
                 write classes
+                commit
             } |> ignore
 
         
-    // save to file. if distClassSeparate = true
-    // saves distance map and class map to separate files
-    member this.Save epochs fileName distClassSeparate =
-        if String.IsNullOrWhiteSpace fileName then failwith "File name must be specified"
-
-        if File.Exists fileName then File.Delete fileName
-
-        let output = List<string>()
-
-        let saveWeights (arr : Node [,]) = 
-            Array2D.init this.Height (this.Width * this.NodeLen )
-                (fun i j ->
-                    arr.[i, j / this.NodeLen].[ j % this.NodeLen].ToString()
-                ) |> buildStringSeq
-                 
-        let insertIntoFileName fileName insert =
-            let path, name, ext = Path.GetDirectoryName(fileName), Path.GetFileNameWithoutExtension(fileName) + insert, Path.GetExtension(fileName)
-            Path.Combine(path, name + ext)
-
-        // 2D weights. Weights are calc'ed first before classifier has mucked them up
-        let weights = saveWeights this.somMap
-
-        let distMap = this.DistanceMap()
-        let strDistMap = distMap |> Array2D.map(fun e -> e.ToString()) |> buildStringSeq
-
-        // distance map (U-matrix)
-        if distClassSeparate then 
-            let distOutput = List<string>()
-            distOutput.AddRange strDistMap
-            File.WriteAllLines(insertIntoFileName fileName "_dist_map", distOutput)
-        else
-            separate output "Distance Map"
-            output.AddRange(strDistMap)
-
-        // density matrix (P-matrix)
-        let denseMap = this.DensityMatrix()
-        let strDensityMatrix = denseMap |> Array2D.map(fun e -> e.ToString()) |> buildStringSeq
-
-        if distClassSeparate then 
-            let distOutput = List<string>()
-            distOutput.AddRange strDensityMatrix
-            File.WriteAllLines(insertIntoFileName fileName "_dense_map", distOutput)
-        else
-            separate output "Density Matrix"
-            output.AddRange(strDensityMatrix)
-
-        // U*-matrix
-        let uStarMatrix = this.UStarMatrix distMap denseMap
-        let strUStarMatrix = uStarMatrix |> Array2D.map(fun e -> e.ToString()) |> buildStringSeq
-
-        if distClassSeparate then 
-            let distOutput = List<string>()
-            distOutput.AddRange strUStarMatrix
-            File.WriteAllLines(insertIntoFileName fileName "_ustar_map", distOutput)
-        else
-            separate output "U* Matrix"
-            output.AddRange(strDensityMatrix)
-
-        // classification
-        if this.ShouldClassify then 
-            separate output "Classes"
-
-            this.TrainClassifier epochs
-            let classes = this.somMap |> Array2D.map (fun node -> node.Class) |> buildStringSeq
-        
-            output.AddRange classes
-
-            if distClassSeparate then 
-                let distOutput = List<string>()
-                distOutput.AddRange classes
-                File.WriteAllLines(insertIntoFileName fileName "_class_map", distOutput)
-
-        separate output "Trained Weights"
-
-        output.AddRange weights
-        
-        if this.ShouldClassify then
-            separate output "Classified Weights"
-            output.AddRange (saveWeights this.somMap)
-
-        // write it all out
-        File.WriteAllLines(fileName, output)
-
     member this.SaveClassified (nodes : Node seq) (classes : string []) outFile =
         if File.Exists outFile then File.Delete outFile
         if nodes = null || nodes.Count() = 0 || classes = null || classes.Length = 0 then failwith "Must supply non-empty classes and nodes arrays"

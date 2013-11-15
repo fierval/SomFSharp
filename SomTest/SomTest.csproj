@@ -84,6 +84,7 @@
     <Compile Include="ReadFileTests.cs" />
     <Compile Include="SomGpuTests.cs" />
     <Compile Include="EsomTests.cs" />
+    <Compile Include="ClusterTest.cs" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\FSom\FSom.fsproj">
@@ -106,6 +107,15 @@
     </Content>
     <Content Include="pathwayABI.txt" />
     <Content Include="proteomicsPBMC_mod.txt">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+    <Content Include="res_dense.txt">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+    <Content Include="res_dist.txt">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+    <Content Include="res_ustar.txt">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Content>
   </ItemGroup>

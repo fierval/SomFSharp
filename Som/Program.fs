@@ -56,7 +56,7 @@ let run (args : Dictionary<string, string>) =
         if som.ShouldClassify then
             printfn "Classifier will be trained..."
         printfn "Saving to: %s" outFile
-        som.Save epochs outFile true
+        som.Save epochs outFile
     | Normalize (height, width, inFile, outFile) ->
         if not (File.Exists inFile) then failwith "File does not exist: %s" inFile
         if File.Exists outFile then File.Delete outFile
