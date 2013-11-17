@@ -132,7 +132,7 @@ module Clustering =
                         // we already had borders here
                         if immersedBorders.[x,y] > 0 then nBorders <- nBorders + 1
                     // we are "inside" a class
-                    if availableLabels.Count = 1 || nBorders > 0 then
+                    if availableLabels.Count = 1 then
                         immersedBorders.[i, j] <- 0
                     else
                         immersedBorders.[i,j] <- 1 //border
