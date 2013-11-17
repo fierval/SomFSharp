@@ -255,7 +255,7 @@ type SomGpuBase(dims, nodes : Node seq) =
                     =
                         let mapLen = len / nodeLen
 
-                        let lp = LaunchParam(nBlocks, nt) //|> Engine.setDiagnoser diagnose
+                        let lp = LaunchParam(nBlocks, nt) 
                     
                         for iter = 0 to mapLen - 1 do
                             kernel.Launch lp mapLen nodeLen nNodes iter dNodes.Ptr dMap.Ptr dTemp.Ptr dMinDists.Ptr dIndex.Ptr
@@ -264,6 +264,7 @@ type SomGpuBase(dims, nodes : Node seq) =
                 run
                 )
         }
+
     member this.pTrainSom = 
         cuda {
                
@@ -331,35 +332,13 @@ type SomGpuBase(dims, nodes : Node seq) =
             )    
         }
 
-        member this.pTestBmu = 
-            cuda {
-                let pdist = this.pDist
-
-                return Entry(
-                        fun (m : Program)  ->
-                    
-                    let run (map : float []) (nodes : float [] list) = 
-                        let nNodes = nodes.Length
-                        let nodeLen = nodes.[0].Length
-                        let len = map.Length
-
-                        let nt =  ((this.DimX * this.DimY) / nodeLen) * nodeLen
-                        let nodeLen = nodes.[0].Length
-                        let mapLen = len / nodeLen
-                        let fit = len / nodeLen / nNodes
-                        let nBlocks = this.GetBlockDim len nt //split the array of nodes into blocks
-
-                        use dMap = m.Worker.Malloc(map)
-                        use dMinDists = m.Worker.Malloc<float>(mapLen)
-                        use dIndex = m.Worker.Malloc<int>(mapLen) 
-                        use dTemp = m.Worker.Malloc<float>(len)
-                        use dNodes = m.Worker.Malloc(nodes.SelectMany(fun n -> n :> float seq).ToArray())
-                        use pdist = pdist |> Compiler.load Worker.Default
-
-                        pdist.Run dMap dNodes dTemp dMinDists dIndex len nodeLen nNodes nt nBlocks
-                    run
-                    )
-            }
+        member this.distanceModules =
+            let options = {CompileOptions.Release with ModuleName = "dist"}
+            let irmDist = Compiler.Compile(this.pDist, options).IRModule
+            let options = {CompileOptions.Release with ModuleName = "distShort"}
+            let irmDistShort = Compiler.Compile(this.pDistShortMap, options).IRModule
+            
+            irmDist, irmDistShort
 
         member this.pTestUnifiedBmu = 
             cuda {
@@ -398,34 +377,6 @@ type SomGpuBase(dims, nodes : Node seq) =
                     )
             }
 
-        member this.pTestDistShortMap = 
-            cuda {
-                let pdist = this.pDistShortMap
-
-                return Entry(
-                        fun (m : Program) ->
-                    use pdist = pdist |> Compiler.load Worker.Default
-                    let run (map : float []) (nodes : float [] list) = 
-                        let nNodes = nodes.Length
-                        let nodeLen = nodes.[0].Length
-                        let len = nNodes * nodeLen
-
-                        let nt =  ((this.DimX * this.DimY) / nodeLen) * nodeLen
-                        let mapLen = map.Length / nodeLen
-                        let nBlocks = this.GetBlockDim len nt //split the array of nodes into blocks
-
-                        use dMap = m.Worker.Malloc(map)
-                        let minDist = Array.create nNodes Double.MaxValue
-                        use dMinDists = m.Worker.Malloc(minDist)
-                        use dIndex = m.Worker.Malloc<int>(nNodes) 
-                        use dTemp = m.Worker.Malloc<float>(len)
-                        use dNodes = m.Worker.Malloc(nodes.SelectMany(fun n -> n :> float seq).ToArray())
-
-                        pdist.Run dMap dNodes dTemp dMinDists dIndex len nodeLen nNodes nt nBlocks
-                    run                    
-                    )
-            }
-        
         member this.pTrainClassifier =
             cuda {
                 let pdist = this.pDist

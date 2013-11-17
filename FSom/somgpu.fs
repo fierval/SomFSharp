@@ -34,26 +34,10 @@ type SomGpu(dims, nodes : Node seq) =
             this.somMap.[x,y] <- Node(arr)) |> ignore
         this.somMap
        
-    member this.GetBmuGpu (nodes : Node seq) =
-        use pfuncm = this.pTestBmu |> Compiler.load Worker.Default
-
-        let mins = pfuncm.Run this.asArray (nodes |> Seq.map (fun n -> n.ToArray()) |> Seq.toList)
-        mins
-
-    member this.GetBmuGpuUnified (map : float []) (nodes : Node seq) =
+    override this.GetBmus nodes =
         use pfuncm = this.pTestUnifiedBmu |> Compiler.load Worker.Default
 
-        let mins = pfuncm.Run map (nodes |> Seq.map (fun n -> n.ToArray()) |> Seq.toList)
-        mins
-
-    member this.GetBmuGpuShortMap (nodes : Node seq) =
-        use pfuncm = this.pTestDistShortMap |> Compiler.load Worker.Default
-
-        let mins = pfuncm.Run this.asArray (nodes |> Seq.map (fun n -> n.ToArray()) |> Seq.toList)
-        mins
-    
-    override this.GetBmus nodes =
-        let mins = this.GetBmuGpu nodes
+        let mins = pfuncm.Run this.toArray (nodes |> Seq.map (fun n -> n.ToArray()) |> Seq.toList)
         mins |> Array.map (fun bmu -> this.toSomCoordinates bmu)
                                 
     override this.Train epochs =
@@ -68,29 +52,11 @@ type SomGpu(dims, nodes : Node seq) =
     member this.MergeNodes () =
         this.InputNodes.SelectMany(fun (n : Node) -> n :> float seq)
 
-    // initialize classes by assigning a class of the
-    // nearest node to each code vector
-    override this.InitClasses () =
-        // for each code vector pick a node closest to it.
-        // this is the reverse of finding a BMU.
-        let map = this.MergeNodes().ToArray()
-        let nodes = this.somMap |> Seq.cast<Node>
-        let bmNodes = this.GetBmuGpuUnified map nodes
-        let nodeLen = this.NodeLen
-
-        nodes |> Seq.iteri
-            (fun i node -> 
-                let bmNode = bmNodes.[i]
-                let x, y = this.toSomCoordinates i
-                this.somMap.[x, y].Class <- this.InputNodes.[bmNode].Class
-            )
-
     override this.TrainClassifier epochs =
         this.InitClasses()
         use pfuncm = this.pTrainClassifier |> Compiler.load Worker.Default
     
         pfuncm.Run epochs
-
 
     override this.DistanceMap () =
         use pfuncm = this.pDistanceMap |> Compiler.load Worker.Default
@@ -108,10 +74,10 @@ type SomGpu(dims, nodes : Node seq) =
         distMap
     
     override this.Classify nodes =
-        let mins = this.GetBmuGpuUnified this.asArray nodes
+        let mins = this.GetBmus nodes
         mins |> Array.map 
             (fun m -> 
-                let x, y = this.toSomCoordinates m
+                let x, y = Point(m).xy
                 this.somMap.[x, y].Class    
             )
 

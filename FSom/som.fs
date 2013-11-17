@@ -485,7 +485,7 @@ type Som(dims : int * int, nodes : Node seq) as this =
         let denseMapFile = insertIntoFileName fileName "_dense"
 
         //U*-matrix
-        printfn "Calculating p*-matrix..."
+        printfn "Calculating u*-matrix..."
         let uStarMatrix = this.UStarMatrix distMap denseMap
         let uStarMatrixFile = insertIntoFileName fileName "_ustar"
 

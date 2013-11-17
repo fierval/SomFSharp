@@ -41,7 +41,7 @@ let main argv =
             printfn "\tAttempt: %d" i
 
             tic()
-            let minsGpu2 = som1.GetBmuGpuUnified map nodes
+            let minsGpu2 = som1.GetBmus nodes
             printfn "\tgpu iterations multiple copies of nodes: %10.3f ms" (toc())
 
             if j < 3 then
@@ -67,11 +67,11 @@ let mainBmuTest argv =
     let som1 = SomGpu((dim1, dim2), nodes)
     let map = (som1.somMap |> Seq.cast<Node>).SelectMany(fun (n : Node) -> n.AsEnumerable()).ToArray()
 
-    let bmus = som1.GetBmuGpuUnified map nodes
+    let bmus = som1.GetBmus nodes
     let mutable failed = 0
     for i = 0 to bound - 1 do
         let bmu = som1.GetBMU nodes.[i]
-        let bmuSom = som1.toSomCoordinates bmus.[i]
+        let bmuSom = bmus.[i]
         
         if bmu = bmuSom then 
             () //printfn "Success!"
@@ -88,7 +88,7 @@ let bmuGpuTest () =
     let som1 = SomGpu((dim1, dim2), nodes)
     for i = 1 to 5 do
         tic()
-        let bmus = som1.GetBmuGpu nodes
+        let bmus = som1.GetBmus nodes
         printfn "Attempt %d" i
         printfn "get bmu's in: %10.3f ms" (toc())
             
@@ -151,11 +151,11 @@ let shortMapTest argv =
     let som1 = SomGpu((dim1, dim2), nodes)
     let map = (som1.somMap |> Seq.cast<Node>).SelectMany(fun (n : Node) -> n.AsEnumerable()).ToArray()
 
-    let bmus = som1.GetBmuGpuUnified map nodes
+    let bmus = som1.GetBmus nodes
     let mutable failed = 0
     for i = 0 to bound - 1 do
         let bmu = som1.GetBMU nodes.[i]
-        let bmuSom = som1.toSomCoordinates bmus.[i]
+        let bmuSom = bmus.[i]
         
         if bmu = bmuSom then 
             () //printfn "Success!"
@@ -178,7 +178,7 @@ let timeShortMapTest argv =
         printfn "\tAttempt: %d" i
 
         tic()
-        let dist = som1.GetBmuGpuUnified map nodes
+        let dist = som1.GetBmus nodes
         printfn "\tgpu unified: %10.3f ms" (toc())
 
 let bmuShortDistance (argv : string []) =
@@ -188,7 +188,7 @@ let bmuShortDistance (argv : string []) =
     let map = som1.MergeNodes().ToArray()
     let nodes = som1.somMap |> Seq.cast<Node>
 
-    let bmus = som1.GetBmuGpuUnified map nodes
+    let bmus = som1.GetBmus nodes
     bmus
 
 let pairwise (argv : string []) =
