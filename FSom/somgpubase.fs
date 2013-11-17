@@ -305,6 +305,7 @@ type SomGpuBase(dims, nodes : Node seq) =
                     // handle multiple dimensions.
                     let mapFullLen = this.asArray.Length
                     let nBlocksTrain = this.GetBlockDim mapFullLen nt
+                    m.Worker.ProfilerStart()
                     let getMins () =
                         program.Run dMap dNodes dTemp dMinDists dMinIndex mapFullLen nodeLen nNodes nt nBlocks
 
@@ -323,7 +324,9 @@ type SomGpuBase(dims, nodes : Node seq) =
                         ptrain.Run epoch epochs r nrule nt nBlocksTrain mins nodeLen mapFullLen dNodes.Ptr dMap.Ptr
                         printfn "epoch: %d, nrule: %10.5f, R: %10.3f, time: %10.3f ms" epoch nrule r (toc())
 
-                    dMap.Gather()
+                    let res = dMap.Gather()
+                    m.Worker.ProfilerStop()
+                    res
                 run
             )    
         }

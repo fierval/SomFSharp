@@ -113,6 +113,15 @@
     <Content Include="proteomicsPBMC_mod.txt">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Content>
+    <Content Include="proteomicsPBMC_som_dense.txt">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+    <Content Include="proteomicsPBMC_som_dist.txt">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+    <Content Include="proteomicsPBMC_som_ustar.txt">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
     <Content Include="res_dense.txt">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Content>

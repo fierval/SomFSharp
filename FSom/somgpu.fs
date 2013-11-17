@@ -51,7 +51,11 @@ type SomGpu(dims, nodes : Node seq) =
 
         let mins = pfuncm.Run this.asArray (nodes |> Seq.map (fun n -> n.ToArray()) |> Seq.toList)
         mins
-                            
+    
+    override this.GetBmus nodes =
+        let mins = this.GetBmuGpu nodes
+        mins |> Array.map (fun bmu -> this.toSomCoordinates bmu)
+                                
     override this.Train epochs =
         use pfuncm = this.pTrainSom |> Compiler.load Worker.Default
 

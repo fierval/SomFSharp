@@ -24,43 +24,18 @@ module Clustering =
         |Direction.Ascend -> Ascend
         |Direction.Descend -> Descend
         |_ -> failwith "Impossible direction"
-        
-    [<DebuggerDisplay("({xy})")>]
-    type Point =
-    |Point of X : int * Y : int
+    
+    /// classifies the immersion matrix based on the labels of the watershed
+    let classifyImmersion (immersion : Point [,]) (labels : int [,]) =
+        let height, width = Array2D.length1 immersion, Array2D.length2 immersion
+        if height <> Array2D.length1 labels || width <> Array2D.length2 labels then
+            failwith "dimensions don't match"
+        Array2D.init height width 
+            (fun i j -> 
+                let x, y = immersion.[i,j].xy
+                labels.[x, y])
 
-        member this.xy = 
-            match this with
-            | Point(X, Y) -> X, Y
-        
-        member this.x =
-            match this with
-            |Point(X = x) -> x
-
-        member this.y =
-            match this with
-            |Point(Y = y) -> y
-
-        //neighbors of a point on a rectangular grid
-        member this.getNeighbors width height =
-            let row, col = this.xy
-            let neighbors = List<Point>()
-            for i = -1 to 1 do
-                for j = -1 to 1 do
-                    if (i <> 0 || j <> 0) && i + row >= 0 && j + col >= 0 && i + row < height && j + col < width then
-                        neighbors.Add(Point(row + i, col + j))
-            neighbors
-
-        member this.addNeighbors width height =
-            let neighbors = this.getNeighbors width height
-            neighbors.Add(this)
-            neighbors
-
-        override this.ToString () =
-            this.x.ToString() + "," + this.y.ToString()
-
-       static member Copy (point : Point) = Point(point.xy)
-
+    /// Performs the Ascent/Descent part of the algorithm
     type AscentDescent(uMatrix : float[,], pMatrix : int [,]) =
         let uMatrix = uMatrix
         let pMatrix = pMatrix |> Array2D.map (fun e -> float e)
@@ -127,7 +102,54 @@ module Clustering =
             this.Immersion <-
                 Array2D.init height width
                     (fun i j -> ascendOrDescend descent.[i,j] Direction.Ascend)
-                                  
+        
+        static member ImmersionToClasses (immersion : Point [,]) =
+            let classesPoints = immersion |> Seq.cast<Point> |> Seq.distinct |> Seq.toArray
+            let dicClasses = Dictionary<Point, int>()
+            classesPoints |> Array.iteri (fun i p -> dicClasses.Add(p, i + 1))
+
+            let height, width = immersion |> Array2D.length1, immersion |> Array2D.length2
+            Array2D.init height width 
+                (fun i j -> dicClasses.[immersion.[i, j]])
+        
+        static member ImmersionToBorders (immersion : Point [,]) =
+            let height, width = immersion |> Array2D.length1, immersion |> Array2D.length2
+
+            let immersedClasses = AscentDescent.ImmersionToClasses immersion
+            let immersedBorders = Array2D.init height width (fun i j -> int Labels.Unlabeled)
+
+            immersedClasses |> Array2D.iteri 
+                (fun i j v ->
+                    let point = Point(i, j)
+                    let neighbors = point.getNeighbors width height
+                    let availableLabels = HashSet(HashIdentity.Structural)
+                    let mutable nBorders = 0
+                    availableLabels.Add(v)
+
+                    for n in neighbors do
+                        let x, y = n.xy
+                        availableLabels.Add(immersedClasses.[x,y])
+                        // we already had borders here
+                        if immersedBorders.[x,y] > 0 then nBorders <- nBorders + 1
+                    // we are "inside" a class
+                    if availableLabels.Count = 1 || nBorders > 0 then
+                        immersedBorders.[i, j] <- 0
+                    else
+                        immersedBorders.[i,j] <- 1 //border
+                )
+            immersedBorders
+
+        static member Save immersion fileName =
+            let classes = AscentDescent.ImmersionToClasses immersion
+            do 
+                saver {
+                write classes
+                commit fileName  
+                } |> ignore
+           
+              
+    ///Breaks the U*-Matrix into watersheds by gradually
+    /// "immersing" it into water                                  
     type Watershed (uMatrix: float [,]) =
         let uMatrix = uMatrix
         let width = uMatrix |> Array2D.length2
@@ -199,10 +221,10 @@ module Clustering =
         /// Actually create the watershed
         member this.CreateWatersheds () =
             let heightMap = getOrderedHeights()
-            heightMap.Select(
+            heightMap |> Seq.iter(
                     fun kvp -> 
                         let points = kvp.Value
                         points |> Seq.iter (fun p -> processShed (Point(p)))
-            ) |> ignore
+            )
    
         member this.Labels = labels

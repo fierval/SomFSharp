@@ -18,6 +18,7 @@ type Som(dims : int * int, nodes : Node seq) as this =
     
     [<DefaultValue>] val mutable somMap : Node [,]
     [<DefaultValue>] val mutable asArray : float []
+    [<DefaultValue>] val mutable Immersion : Point [,]
 
     let mutable metric = Metric.Euclidian
     let mutable shouldClassify = false
@@ -265,7 +266,7 @@ type Som(dims : int * int, nodes : Node seq) as this =
             let dist = getDistance e node this.Metric
             if dist < !min then min := dist; minI := i; minJ := j)
         !minI, !minJ
-
+    
     member this.GetBMUParallel (node : Node) =
         let monitor = new obj()
         let minList = ref []
@@ -294,6 +295,10 @@ type Som(dims : int * int, nodes : Node seq) as this =
         match minTuple with
         | x, i, j -> i, j
     
+    abstract member GetBmus : Node seq -> (int * int) []
+    default this.GetBmus nodes =
+        nodes |> Seq.map (fun node -> this.GetBMUParallel node) |> Seq.toArray
+
     abstract member Train : int -> Node [,]
     default this.Train epochs =
         this.train epochs
@@ -406,6 +411,55 @@ type Som(dims : int * int, nodes : Node seq) as this =
             )
         |> Seq.toArray
 
+    // cluster based on uMatrix, pMatrix and u*Matrix.
+    // assign class names to the nodes
+    // returns the cluster assignment matrix
+    abstract member Cluster : float [,] -> int [,] -> float[,] -> float [,]
+
+    default this.Cluster uMatrix pMatrix uStarMatrix =
+        // ascend & descend, calculate watersheds
+        let ascendDescend = AscentDescent(uMatrix, pMatrix)
+        let watershed = Watershed(uStarMatrix)
+
+        let t1 = Task.Factory.StartNew(ascendDescend.Immerse)
+        let t2 = Task.Factory.StartNew(watershed.CreateWatersheds)
+        Task.WaitAll(t1, t2)
+        
+        // for debugging
+        this.Immersion <- ascendDescend.Immersion
+
+        // produce clusters
+        let clusters = classifyImmersion ascendDescend.Immersion watershed.Labels
+
+        //assign clusters to Nodes
+        let bmus = this.GetBmus this.InputNodes
+        bmus |> Seq.iteri 
+            (fun i bmu -> 
+                let x, y = Point(bmu).xy
+                if clusters.[x,y] <> 0 then this.InputNodes.[i].Class <- clusters.[x,y].ToString()
+            )
+        // return the array of watersheds
+        Array2D.init this.Height this.Width
+            (fun i j ->
+                if watershed.Labels.[i, j] = 0 then 0. else 1.)
+
+    member this.SaveClustered fileName =
+        if String.IsNullOrWhiteSpace fileName then failwith "file name must be specified"
+        if File.Exists fileName then File.Delete fileName
+        let buf = List<string>()
+
+        let nodeDic = 
+            this.InputNodes.OrderBy(fun n -> n.Class).Where(fun n-> not (String.IsNullOrWhiteSpace n.Class))
+                .GroupBy(fun n -> n.Class)
+
+        nodeDic |> Seq.iter
+            (fun g ->
+                buf.Add(g.Key)
+                g |> Seq.iter
+                    (fun n -> buf.Add("\t" + n.Name))
+                )
+        File.WriteAllLines(fileName, buf)
+
     member this.Save epochs fileName =
         let saveWeights (arr : Node [,]) = 
             Array2D.init this.Height (this.Width * this.NodeLen )
@@ -421,52 +475,76 @@ type Som(dims : int * int, nodes : Node seq) as this =
         let weights = saveWeights this.somMap
 
         //U-matrix
+        printfn "Calculating u-matrix..."
         let distMap = this.DistanceMap()
         let distMapFile = insertIntoFileName fileName "_dist"
 
         //P-matrix
+        printfn "Calculating p-matrix..."
         let denseMap = this.DensityMatrix()
         let denseMapFile = insertIntoFileName fileName "_dense"
 
         //U*-matrix
+        printfn "Calculating p*-matrix..."
         let uStarMatrix = this.UStarMatrix distMap denseMap
         let uStarMatrixFile = insertIntoFileName fileName "_ustar"
 
+        //Clustering
+        printfn "Clustering..."
+        let watershed = this.Cluster distMap denseMap uStarMatrix
+        let watershedFile = insertIntoFileName fileName "_watershed"
+        let clusteredNodesFile = insertIntoFileName fileName "_clustered_nodes"
+
+        //Immersion matrix
+        printfn "Immersion..."
+        let immersion = AscentDescent.ImmersionToClasses this.Immersion
+        let immersionClassesFile = insertIntoFileName fileName "_immersion_classes"
+
+        let immersionBorders = AscentDescent.ImmersionToBorders this.Immersion
+        let immersionBordersFile = insertIntoFileName fileName "_immersion"
+
+        //Save clustered nodes
+        this.SaveClustered clusteredNodesFile
+
         // classification
         let classes = 
-            if this.ShouldClassify then 
-                this.TrainClassifier epochs
-                this.somMap |> Array2D.map (fun node -> node.Class)
-            else
+//            if this.ShouldClassify then 
+//                printfn "Assigning classes..."
+//                this.TrainClassifier epochs
+//                this.somMap |> Array2D.map (fun node -> node.Class)
+//            else
                 Array2D.init 0 0 (fun _ _ -> String.Empty)
         
-        saver fileName {
-            add "Trained Weights"
+        saver {
+            separate "Trained Weights"
             write weights
-            commit
-        } |> ignore
+            commit fileName
 
-        saver distMapFile {
             write distMap
-            commit
-        } |> ignore
+            commit distMapFile
 
-        saver denseMapFile {
             write denseMap
-            commit
-        } |> ignore
+            commit denseMapFile
 
-        saver uStarMatrixFile {
             write uStarMatrix
-            commit
+            commit uStarMatrixFile
+
+            write watershed
+            commit watershedFile
+
+            write immersion
+            commit immersionClassesFile
+
+            write immersionBorders
+            commit immersionBordersFile
         } |> ignore
 
-        if this.ShouldClassify then
+        if this.ShouldClassify && classes.Length > 0 then
             let classesFile = insertIntoFileName fileName "_classes"
 
-            saver classesFile {
+            saver {
                 write classes
-                commit
+                commit classesFile
             } |> ignore
 
         

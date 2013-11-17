@@ -26,7 +26,7 @@ let mainTrainTest argv =
 
 let main argv = 
     
-    for j = 3 to 3 do
+    for j = 1 to 5 do
         let upper = 10. ** float(j)
         let bound = int(floor(upper * 1.2))
         let nodes = ([1..bound] |> Seq.map (fun i -> Node(12))).ToList()
@@ -34,7 +34,8 @@ let main argv =
         let map = (som1.somMap |> Seq.cast<Node>).SelectMany(fun (n : Node) -> n.AsEnumerable()).ToArray()
         printfn "\n"
         printfn "Number of nodes: %d" bound
-        for i = 1 to 3 do
+        printfn "Som: %d x %d nodes" som1.Width som1.Height
+        for i = 1 to 1 do
             printfn "\n"
             printfn "============================"
             printfn "\tAttempt: %d" i
@@ -43,7 +44,7 @@ let main argv =
             let minsGpu2 = som1.GetBmuGpuUnified map nodes
             printfn "\tgpu iterations multiple copies of nodes: %10.3f ms" (toc())
 
-            if j < 2 then
+            if j < 3 then
                 tic()
                 nodes |> Seq.iter( fun node -> som1.GetBMUParallel(node) |> ignore)
                 printfn "\tcpu parallel: %10.3f ms" (toc())
@@ -60,8 +61,8 @@ let main argv =
 
 let mainBmuTest argv = 
     let bound = 1200
-    let dim1 = 30
-    let dim2 = 20
+    let dim1 = 300
+    let dim2 = 200
     let nodes = ([1..bound] |> Seq.map (fun i -> Node(11))).ToList()
     let som1 = SomGpu((dim1, dim2), nodes)
     let map = (som1.somMap |> Seq.cast<Node>).SelectMany(fun (n : Node) -> n.AsEnumerable()).ToArray()
@@ -79,6 +80,18 @@ let mainBmuTest argv =
             failed <- failed + 1
     printfn "failed: %d" failed
 
+let bmuGpuTest () =
+    let bound = 12000
+    let dim1 = 400
+    let dim2 = 400
+    let nodes = ([1..bound] |> Seq.map (fun i -> Node(11))).ToList()
+    let som1 = SomGpu((dim1, dim2), nodes)
+    for i = 1 to 5 do
+        tic()
+        let bmus = som1.GetBmuGpu nodes
+        printfn "Attempt %d" i
+        printfn "get bmu's in: %10.3f ms" (toc())
+            
 let classifyTrainTest argv = 
     let bound = 12000
     let dim1 = 80
@@ -238,20 +251,20 @@ let ustar (argv : string []) =
 
     printfn "U*-matrix computed in: %10.3f ms" (toc())
 
-
-
 [<EntryPoint>]
 let tests argv =
     //classifyTrainTest argv
     //mainTrainTest argv
     //for i = 0 to 10 do
     //mainBmuTest argv
+    //bmuGpuTest
     //main argv
-    findDistance argv
+    //findDistance argv
     //shortMapTest argv
     //timeShortMapTest argv
     //bmuShortDistance argv |> ignore
     //pairwise argv
     //density argv
     //ustar argv
+    main argv
     0
