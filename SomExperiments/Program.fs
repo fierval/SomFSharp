@@ -30,7 +30,7 @@ let main argv =
         let upper = 10. ** float(j)
         let bound = int(floor(upper * 1.2))
         let nodes = ([1..bound] |> Seq.map (fun i -> Node(12))).ToList()
-        let som1 = SomGpu((200, 200), nodes)
+        let som1 = SomGpu((2000, 200), nodes)
         let map = (som1.somMap |> Seq.cast<Node>).SelectMany(fun (n : Node) -> n.AsEnumerable()).ToArray()
         printfn "\n"
         printfn "Number of nodes: %d" bound
@@ -44,7 +44,7 @@ let main argv =
             let minsGpu2 = som1.GetBmus nodes
             printfn "\tgpu iterations multiple copies of nodes: %10.3f ms" (toc())
 
-            if j < 3 then
+            if j < 3 && som1.Width * som1.Height <= 40000 then
                 tic()
                 nodes |> Seq.iter( fun node -> som1.GetBMUParallel(node) |> ignore)
                 printfn "\tcpu parallel: %10.3f ms" (toc())
